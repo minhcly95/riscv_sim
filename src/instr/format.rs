@@ -59,23 +59,18 @@ const J19_12_MASK: u32 = ((1 << 8) - 1) << 12;
 const J20_MASK: u32 = 1 << 20;
 
 fn sign_extend_12(imm: u32) -> i32 {
-    (if imm >= 0x800 { imm | 0xfffff_000 } else { imm }) as i32
+    // 12 + 20 = 32
+    ((imm as i32) << 20) >> 20
 }
 
 fn sign_extend_13(imm: u32) -> i32 {
-    (if imm >= 0x1000 {
-        imm | 0xffff_e000
-    } else {
-        imm
-    }) as i32
+    // 13 + 19 = 32
+    ((imm as i32) << 19) >> 19
 }
 
 fn sign_extend_21(imm: u32) -> i32 {
-    (if imm >= 0x100000 {
-        imm | 0xff_e00000
-    } else {
-        imm
-    }) as i32
+    // 21 + 11 = 32
+    ((imm as i32) << 11) >> 11
 }
 
 impl RType {

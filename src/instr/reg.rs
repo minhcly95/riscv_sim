@@ -4,7 +4,7 @@ const REG_MASK: u32 = (1 << 5) - 1;
 const DISPLAY_NAMES: [&str; 32] = [
     "zero", "ra", "sp", "gp", "tp", "t0", "t1", "t2", "s0", "s1", "a0", "a1", "a2", "a3", "a4",
     "a5", "a6", "a7", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "t3", "t4",
-    "t5", "t6"
+    "t5", "t6",
 ];
 
 #[derive(PartialEq, Eq)]
@@ -22,16 +22,26 @@ impl Reg {
         Reg { index }
     }
 
+    pub fn zero() -> Reg {
+        Reg { index: 0 }
+    }
+
     pub fn extract_rd(code: u32) -> Reg {
-        unsafe { Reg::unchecked_new(((code >> 7) & REG_MASK) as u8) }
+        Reg {
+            index: ((code >> 7) & REG_MASK) as u8,
+        }
     }
 
     pub fn extract_rs1(code: u32) -> Reg {
-        unsafe { Reg::unchecked_new(((code >> 15) & REG_MASK) as u8) }
+        Reg {
+            index: ((code >> 15) & REG_MASK) as u8,
+        }
     }
 
     pub fn extract_rs2(code: u32) -> Reg {
-        unsafe { Reg::unchecked_new(((code >> 20) & REG_MASK) as u8) }
+        Reg {
+            index: ((code >> 20) & REG_MASK) as u8,
+        }
     }
 
     pub fn index(&self) -> u8 {
@@ -47,7 +57,11 @@ impl Display for Reg {
 
 impl Debug for Reg {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} (x{})", DISPLAY_NAMES[self.index as usize], self.index)
+        write!(
+            f,
+            "{} (x{})",
+            DISPLAY_NAMES[self.index as usize], self.index
+        )
     }
 }
 
