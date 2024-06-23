@@ -1,3 +1,5 @@
+use system::execute_system;
+
 use crate::{
     instr::{format::*, Instr},
     Exception, System,
@@ -14,6 +16,7 @@ mod lui;
 mod op;
 mod opimm;
 mod store;
+mod system;
 
 pub fn execute(sys: &mut System, instr: &Instr) -> Result {
     match instr {
@@ -26,8 +29,8 @@ pub fn execute(sys: &mut System, instr: &Instr) -> Result {
         Instr::Jal(JType { rd, imm }) => jal::execute_jal(sys, rd, *imm)?,
         Instr::Jalr(IType { rd, rs1, imm }) => jalr::execute_jalr(sys, rd, rs1, *imm)?,
         Instr::Branch(BType { rs1, rs2, imm }, f) => branch::execute_branch(sys, rs1, rs2, *imm, f)?,
-        Instr::Fence => (),
-        Instr::System => (),
+        Instr::Fence => advance_pc(sys),
+        Instr::System => execute_system(sys)?,
     }
     Ok(())
 }

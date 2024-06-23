@@ -1,10 +1,12 @@
 mod decode;
+mod env;
 mod exception;
 mod exec;
 mod instr;
 mod sys;
 
 pub use decode::decode;
+pub use env::Env;
 pub use exception::Exception;
 pub use exec::execute;
 pub use instr::{

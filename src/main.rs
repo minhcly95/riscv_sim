@@ -1,9 +1,13 @@
-use riscv_sim::{self, decode, execute, System};
+use riscv_sim::Env;
+use std::env;
 
 fn main() {
-    let instr = decode(0x80000fb7).unwrap();
-    println!("{:#?}", instr);
-    let mut sys = System::new(0x100000); // 1 MB of memory
-    execute(&mut sys, &instr).unwrap();
-    println!("{:#?}", sys);
+    let mut args = env::args();
+    args.next();
+    let file_name = args.next().unwrap();
+
+    let mut env = Env::new();
+    env.load_from_file(&file_name).unwrap();
+    env.run_until_break();
+    println!("{:#?}", env.sys);
 }
