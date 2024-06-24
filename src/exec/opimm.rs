@@ -9,14 +9,14 @@ pub fn execute_opimm(sys: &mut System, rd: &Reg, rs1: &Reg, imm: i32, f: &OpImmF
     let rd = sys.reg_mut(rd);
     match f {
         OpImmFunct::Add => *rd = rs1.wrapping_add(imm),
-        OpImmFunct::Slt => *rd = if rs1 < imm { 1 } else { 0 },
+        OpImmFunct::Slt => *rd = if (rs1 as i32) < (imm as i32) { 1 } else { 0 },
         OpImmFunct::Sltu => *rd = if (rs1 as u32) < (imm as u32) { 1 } else { 0 },
         OpImmFunct::Xor => *rd = rs1 ^ imm,
         OpImmFunct::Or => *rd = rs1 | imm,
         OpImmFunct::And => *rd = rs1 & imm,
         OpImmFunct::Sll => *rd = rs1.wrapping_shl(imm as u32),
         OpImmFunct::Srl => *rd = (rs1 as u32).wrapping_shr(imm as u32) as i32,
-        OpImmFunct::Sra => *rd = rs1.wrapping_shr(imm as u32),
+        OpImmFunct::Sra => *rd = (rs1 as i32).wrapping_shr(imm as u32),
     };
     advance_pc(sys);
 }

@@ -3,6 +3,7 @@ const FUNCT7_MASK: u32 = (1 << 7) - 1;
 
 enum Funct7 {
     Zero,
+    One,
     Set5,
 }
 
@@ -13,7 +14,8 @@ fn funct3(code: u32) -> u8 {
 fn funct7(code: u32) -> Option<Funct7> {
     let f7 = (code >> 25) & FUNCT7_MASK;
     match f7 {
-        0 => Some(Funct7::Zero),
+        0b0000000 => Some(Funct7::Zero),
+        0b0000001 => Some(Funct7::One),
         0b0100000 => Some(Funct7::Set5),
         _ => None,
     }
@@ -21,6 +23,12 @@ fn funct7(code: u32) -> Option<Funct7> {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum OpFunct {
+    I(OpIFunct),
+    M(OpMFunct),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum OpIFunct {
     Add,
     Sub,
     Slt,
@@ -31,6 +39,18 @@ pub enum OpFunct {
     Sll,
     Srl,
     Sra,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum OpMFunct {
+    Mul,
+    Mulh,
+    Mulhsu,
+    Mulhu,
+    Div,
+    Divu,
+    Rem,
+    Remu,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -77,16 +97,26 @@ impl OpFunct {
         let f3 = funct3(code);
         let f7 = funct7(code)?;
         match (f3, f7) {
-            (0b000, Funct7::Zero) => Some(OpFunct::Add),
-            (0b000, Funct7::Set5) => Some(OpFunct::Sub),
-            (0b001, Funct7::Zero) => Some(OpFunct::Sll),
-            (0b010, Funct7::Zero) => Some(OpFunct::Slt),
-            (0b011, Funct7::Zero) => Some(OpFunct::Sltu),
-            (0b100, Funct7::Zero) => Some(OpFunct::Xor),
-            (0b101, Funct7::Zero) => Some(OpFunct::Srl),
-            (0b101, Funct7::Set5) => Some(OpFunct::Sra),
-            (0b110, Funct7::Zero) => Some(OpFunct::Or),
-            (0b111, Funct7::Zero) => Some(OpFunct::And),
+            // OpI
+            (0b000, Funct7::Zero) => Some(OpFunct::I(OpIFunct::Add)),
+            (0b000, Funct7::Set5) => Some(OpFunct::I(OpIFunct::Sub)),
+            (0b001, Funct7::Zero) => Some(OpFunct::I(OpIFunct::Sll)),
+            (0b010, Funct7::Zero) => Some(OpFunct::I(OpIFunct::Slt)),
+            (0b011, Funct7::Zero) => Some(OpFunct::I(OpIFunct::Sltu)),
+            (0b100, Funct7::Zero) => Some(OpFunct::I(OpIFunct::Xor)),
+            (0b101, Funct7::Zero) => Some(OpFunct::I(OpIFunct::Srl)),
+            (0b101, Funct7::Set5) => Some(OpFunct::I(OpIFunct::Sra)),
+            (0b110, Funct7::Zero) => Some(OpFunct::I(OpIFunct::Or)),
+            (0b111, Funct7::Zero) => Some(OpFunct::I(OpIFunct::And)),
+            // OpM
+            (0b000, Funct7::One) => Some(OpFunct::M(OpMFunct::Mul)),
+            (0b001, Funct7::One) => Some(OpFunct::M(OpMFunct::Mulh)),
+            (0b010, Funct7::One) => Some(OpFunct::M(OpMFunct::Mulhsu)),
+            (0b011, Funct7::One) => Some(OpFunct::M(OpMFunct::Mulhu)),
+            (0b100, Funct7::One) => Some(OpFunct::M(OpMFunct::Div)),
+            (0b101, Funct7::One) => Some(OpFunct::M(OpMFunct::Divu)),
+            (0b110, Funct7::One) => Some(OpFunct::M(OpMFunct::Rem)),
+            (0b111, Funct7::One) => Some(OpFunct::M(OpMFunct::Remu)),
             _ => None,
         }
     }

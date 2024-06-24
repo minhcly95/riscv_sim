@@ -48,16 +48,16 @@ mod tests {
     #[test]
     #[rustfmt::skip]
     fn test_decode_op() {
-        assert_eq!(decode(0x003084b3).unwrap(), Instr::Op(RType { rd: Reg::new( 9), rs1: Reg::new( 1), rs2: Reg::new( 3)}, OpFunct::Add));
-        assert_eq!(decode(0x41968ab3).unwrap(), Instr::Op(RType { rd: Reg::new(21), rs1: Reg::new(13), rs2: Reg::new(25)}, OpFunct::Sub));
-        assert_eq!(decode(0x00612033).unwrap(), Instr::Op(RType { rd: Reg::new( 0), rs1: Reg::new( 2), rs2: Reg::new( 6)}, OpFunct::Slt));
-        assert_eq!(decode(0x00613833).unwrap(), Instr::Op(RType { rd: Reg::new(16), rs1: Reg::new( 2), rs2: Reg::new( 6)}, OpFunct::Sltu));
-        assert_eq!(decode(0x00ab4733).unwrap(), Instr::Op(RType { rd: Reg::new(14), rs1: Reg::new(22), rs2: Reg::new(10)}, OpFunct::Xor));
-        assert_eq!(decode(0x01a9e1b3).unwrap(), Instr::Op(RType { rd: Reg::new( 3), rs1: Reg::new(19), rs2: Reg::new(26)}, OpFunct::Or));
-        assert_eq!(decode(0x0021f0b3).unwrap(), Instr::Op(RType { rd: Reg::new( 1), rs1: Reg::new( 3), rs2: Reg::new( 2)}, OpFunct::And));
-        assert_eq!(decode(0x00729733).unwrap(), Instr::Op(RType { rd: Reg::new(14), rs1: Reg::new( 5), rs2: Reg::new( 7)}, OpFunct::Sll));
-        assert_eq!(decode(0x0192d0b3).unwrap(), Instr::Op(RType { rd: Reg::new( 1), rs1: Reg::new( 5), rs2: Reg::new(25)}, OpFunct::Srl));
-        assert_eq!(decode(0x41cb5d33).unwrap(), Instr::Op(RType { rd: Reg::new(26), rs1: Reg::new(22), rs2: Reg::new(28)}, OpFunct::Sra));
+        assert_eq!(decode(0x003084b3).unwrap(), Instr::Op(RType { rd: Reg::new( 9), rs1: Reg::new( 1), rs2: Reg::new( 3)}, OpFunct::I(OpIFunct::Add)));
+        assert_eq!(decode(0x41968ab3).unwrap(), Instr::Op(RType { rd: Reg::new(21), rs1: Reg::new(13), rs2: Reg::new(25)}, OpFunct::I(OpIFunct::Sub)));
+        assert_eq!(decode(0x00612033).unwrap(), Instr::Op(RType { rd: Reg::new( 0), rs1: Reg::new( 2), rs2: Reg::new( 6)}, OpFunct::I(OpIFunct::Slt)));
+        assert_eq!(decode(0x00613833).unwrap(), Instr::Op(RType { rd: Reg::new(16), rs1: Reg::new( 2), rs2: Reg::new( 6)}, OpFunct::I(OpIFunct::Sltu)));
+        assert_eq!(decode(0x00ab4733).unwrap(), Instr::Op(RType { rd: Reg::new(14), rs1: Reg::new(22), rs2: Reg::new(10)}, OpFunct::I(OpIFunct::Xor)));
+        assert_eq!(decode(0x01a9e1b3).unwrap(), Instr::Op(RType { rd: Reg::new( 3), rs1: Reg::new(19), rs2: Reg::new(26)}, OpFunct::I(OpIFunct::Or)));
+        assert_eq!(decode(0x0021f0b3).unwrap(), Instr::Op(RType { rd: Reg::new( 1), rs1: Reg::new( 3), rs2: Reg::new( 2)}, OpFunct::I(OpIFunct::And)));
+        assert_eq!(decode(0x00729733).unwrap(), Instr::Op(RType { rd: Reg::new(14), rs1: Reg::new( 5), rs2: Reg::new( 7)}, OpFunct::I(OpIFunct::Sll)));
+        assert_eq!(decode(0x0192d0b3).unwrap(), Instr::Op(RType { rd: Reg::new( 1), rs1: Reg::new( 5), rs2: Reg::new(25)}, OpFunct::I(OpIFunct::Srl)));
+        assert_eq!(decode(0x41cb5d33).unwrap(), Instr::Op(RType { rd: Reg::new(26), rs1: Reg::new(22), rs2: Reg::new(28)}, OpFunct::I(OpIFunct::Sra)));
     }
 
     #[test]
@@ -143,5 +143,18 @@ mod tests {
     fn test_decode_illegal() {
         assert_eq!(decode(0x00000000), None);
         assert_eq!(decode(0xffffffff), None);
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn test_decode_mul() {
+        assert_eq!(decode(0x03138633).unwrap(), Instr::Op(RType { rd: Reg::new(12), rs1: Reg::new( 7), rs2: Reg::new(17)}, OpFunct::M(OpMFunct::Mul)));
+        assert_eq!(decode(0x03759db3).unwrap(), Instr::Op(RType { rd: Reg::new(27), rs1: Reg::new(11), rs2: Reg::new(23)}, OpFunct::M(OpMFunct::Mulh)));
+        assert_eq!(decode(0x0316a533).unwrap(), Instr::Op(RType { rd: Reg::new(10), rs1: Reg::new(13), rs2: Reg::new(17)}, OpFunct::M(OpMFunct::Mulhsu)));
+        assert_eq!(decode(0x028db0b3).unwrap(), Instr::Op(RType { rd: Reg::new( 1), rs1: Reg::new(27), rs2: Reg::new( 8)}, OpFunct::M(OpMFunct::Mulhu)));
+        assert_eq!(decode(0x023f4db3).unwrap(), Instr::Op(RType { rd: Reg::new(27), rs1: Reg::new(30), rs2: Reg::new( 3)}, OpFunct::M(OpMFunct::Div)));
+        assert_eq!(decode(0x027b54b3).unwrap(), Instr::Op(RType { rd: Reg::new( 9), rs1: Reg::new(22), rs2: Reg::new( 7)}, OpFunct::M(OpMFunct::Divu)));
+        assert_eq!(decode(0x02446333).unwrap(), Instr::Op(RType { rd: Reg::new( 6), rs1: Reg::new( 8), rs2: Reg::new( 4)}, OpFunct::M(OpMFunct::Rem)));
+        assert_eq!(decode(0x02157933).unwrap(), Instr::Op(RType { rd: Reg::new(18), rs1: Reg::new(10), rs2: Reg::new( 1)}, OpFunct::M(OpMFunct::Remu)));
     }
 }
