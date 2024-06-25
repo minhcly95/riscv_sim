@@ -38,12 +38,8 @@ impl System {
 
     pub fn step(&mut self) -> Result {
         // Fetch
-        let pc = self.pc() as usize;
-        let code: u32 = *self
-            .mem
-            .u32()
-            .get(pc >> 2)
-            .ok_or(Exception::InstrAccessFault)?;
+        let pc = self.pc();
+        let code: u32 = self.mem.fetch(pc)?;
 
         // Decode
         let instr = decode(code).ok_or(Exception::IllegalInstr)?;

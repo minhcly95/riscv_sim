@@ -15,7 +15,7 @@ fn int_test() {
         .collect();
 
     // Data in mem starts from 0x1000 in bytes, which is 0x400 in words
-    let mem_dat = &env.sys.mem.u32()[0x400..(0x400 + 66)];
+    let mem_dat = &env.sys.mem.as_u32()[0x400..(0x400 + 66)];
 
     assert_eq!(ref_dat, mem_dat);
 }
@@ -34,7 +34,7 @@ fn fibonacci() {
         .collect();
 
     // Data in mem starts from 0x1000 in bytes, which is 0x400 in words
-    let mem_dat = &env.sys.mem.u32()[0x400..(0x400 + 40)];
+    let mem_dat = &env.sys.mem.as_u32()[0x400..(0x400 + 40)];
 
     assert_eq!(ref_dat, mem_dat);
 }
@@ -53,7 +53,7 @@ fn mul_test() {
         .collect();
 
     // Data in mem starts from 0x1000 in bytes, which is 0x400 in words
-    let mem_dat = &env.sys.mem.u32()[0x400..(0x400 + 33)];
+    let mem_dat = &env.sys.mem.as_u32()[0x400..(0x400 + 33)];
 
     assert_eq!(ref_dat, mem_dat);
 }

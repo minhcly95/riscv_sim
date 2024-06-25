@@ -19,7 +19,7 @@ impl Env {
             "{} with {len} bytes",
             "Load image".blue()
         ));
-        self.sys.mem.u8_mut()[0..len].copy_from_slice(&image);
+        self.sys.mem.as_u8_mut()[0..len].copy_from_slice(&image);
         Ok(())
     }
 

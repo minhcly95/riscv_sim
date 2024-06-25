@@ -1,30 +1,15 @@
 use super::{advance_pc, Result};
-use crate::{instr::reg::Reg, Exception::*, LoadFunct, System};
+use crate::{instr::reg::Reg, LoadFunct, System};
 
 pub fn execute_load(sys: &mut System, rd: &Reg, rs1: &Reg, imm: i32, f: &LoadFunct) -> Result {
     let rs1 = sys.reg(rs1);
-    let addr = (rs1 + imm) as usize;
+    let addr = (rs1 + imm) as u32;
     let data = match f {
-        LoadFunct::B => sign_extend_8(*sys.mem.u8().get(addr).ok_or(LoadAccessFault)?),
-        LoadFunct::Bu => *sys.mem.u8().get(addr).ok_or(LoadAccessFault)? as i32,
-        LoadFunct::H => {
-            if addr & 0b1 != 0 {
-                return Err(LoadAddrMisaligned);
-            }
-            sign_extend_16(*sys.mem.u16().get(addr >> 1).ok_or(LoadAccessFault)?)
-        }
-        LoadFunct::Hu => {
-            if addr & 0b1 != 0 {
-                return Err(LoadAddrMisaligned);
-            }
-            *sys.mem.u16().get(addr >> 1).ok_or(LoadAccessFault)? as i32
-        }
-        LoadFunct::W => {
-            if addr & 0b11 != 0 {
-                return Err(LoadAddrMisaligned);
-            }
-            *sys.mem.u32().get(addr >> 2).ok_or(LoadAccessFault)? as i32
-        }
+        LoadFunct::B => sign_extend_8(sys.mem.read_u8(addr)?),
+        LoadFunct::Bu => sys.mem.read_u8(addr)? as i32,
+        LoadFunct::H => sign_extend_16(sys.mem.read_u16(addr)?),
+        LoadFunct::Hu => sys.mem.read_u16(addr)? as i32,
+        LoadFunct::W => sys.mem.read_u32(addr)? as i32,
     };
     *sys.reg_mut(rd) = data;
     advance_pc(sys);
@@ -32,17 +17,17 @@ pub fn execute_load(sys: &mut System, rd: &Reg, rs1: &Reg, imm: i32, f: &LoadFun
 }
 
 fn sign_extend_8(imm: u8) -> i32 {
-    ((imm as i32) << 24) >> 24
+    imm as i8 as i32
 }
 
 fn sign_extend_16(imm: u16) -> i32 {
-    ((imm as i32) << 16) >> 16
+    imm as i16 as i32
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Exception;
+    use crate::Exception::{self, *};
 
     fn assert_load(sys: &mut System, rd: u8, rs1: u8, imm: i32, f: LoadFunct, expect: u32) {
         execute_load(sys, &Reg::new(rd), &Reg::new(rs1), imm, &f).unwrap();
@@ -64,7 +49,7 @@ mod tests {
     #[test]
     fn test_execute_load_byte() {
         let mut sys = System::new(16);
-        sys.mem.u32_mut()[0] = 0xbcfec832;
+        sys.mem.write_u32(0, 0xbcfec832).unwrap();
 
         assert_load(&mut sys, 1, 0, 0, LoadFunct::B, 0x000000_32);
         assert_load(&mut sys, 1, 0, 1, LoadFunct::B, 0xffffff_c8);
@@ -76,7 +61,7 @@ mod tests {
     #[test]
     fn test_execute_load_byte_unsigned() {
         let mut sys = System::new(16);
-        sys.mem.u32_mut()[0] = 0xbcfec832;
+        sys.mem.write_u32(0, 0xbcfec832).unwrap();
 
         assert_load(&mut sys, 1, 0, 0, LoadFunct::Bu, 0x000000_32);
         assert_load(&mut sys, 1, 0, 1, LoadFunct::Bu, 0x000000_c8);
@@ -88,7 +73,7 @@ mod tests {
     #[test]
     fn test_execute_load_halfword() {
         let mut sys = System::new(16);
-        sys.mem.u32_mut()[0] = 0xbcfec832;
+        sys.mem.write_u32(0, 0xbcfec832).unwrap();
 
         assert_load(&mut sys, 1, 0, 0, LoadFunct::H, 0xffff_c832);
         assert_load(&mut sys, 1, 0, 2, LoadFunct::H, 0xffff_bcfe);
@@ -98,7 +83,7 @@ mod tests {
     #[test]
     fn test_execute_load_halfword_unsigned() {
         let mut sys = System::new(16);
-        sys.mem.u32_mut()[0] = 0xbcfec832;
+        sys.mem.write_u32(0, 0xbcfec832).unwrap();
 
         assert_load(&mut sys, 1, 0, 0, LoadFunct::Hu, 0x0000_c832);
         assert_load(&mut sys, 1, 0, 2, LoadFunct::Hu, 0x0000_bcfe);
@@ -108,7 +93,7 @@ mod tests {
     #[test]
     fn test_execute_load_word() {
         let mut sys = System::new(16);
-        sys.mem.u32_mut()[0] = 0xbcfec832;
+        sys.mem.write_u32(0, 0xbcfec832).unwrap();
 
         assert_load(&mut sys, 1, 0, 0, LoadFunct::W, 0xbcfec832);
         assert_eq!(sys.state.pc(), 4);
