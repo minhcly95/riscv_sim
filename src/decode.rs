@@ -13,6 +13,7 @@ const OPCODE_JALR: u8 = 0b1100111;
 const OPCODE_BRANCH: u8 = 0b1100011;
 const OPCODE_MISC: u8 = 0b0001111;
 const OPCODE_SYSTEM: u8 = 0b1110011;
+const OPCODE_AMO: u8 = 0b0101111;
 
 pub fn decode(code: u32) -> Option<Instr> {
     let opcode = (code & OPCODE_MASK) as u8;
@@ -34,6 +35,7 @@ pub fn decode(code: u32) -> Option<Instr> {
         OPCODE_JAL => Some(Instr::Jal(JType::from(code))),
         OPCODE_JALR => Some(Instr::Jalr(IType::from(code))),
         OPCODE_BRANCH => Some(Instr::Branch(BType::from(code), BranchFunct::from(code)?)),
+        OPCODE_AMO => Some(Instr::Atomic(RType::from(code), AtomicFunct::from(code)?)),
         OPCODE_MISC => Some(Instr::Fence),
         OPCODE_SYSTEM => Some(Instr::System),
         _ => None,
@@ -156,5 +158,21 @@ mod tests {
         assert_eq!(decode(0x027b54b3).unwrap(), Instr::Op(RType { rd: Reg::new( 9), rs1: Reg::new(22), rs2: Reg::new( 7)}, OpFunct::M(OpMFunct::Divu)));
         assert_eq!(decode(0x02446333).unwrap(), Instr::Op(RType { rd: Reg::new( 6), rs1: Reg::new( 8), rs2: Reg::new( 4)}, OpFunct::M(OpMFunct::Rem)));
         assert_eq!(decode(0x02157933).unwrap(), Instr::Op(RType { rd: Reg::new(18), rs1: Reg::new(10), rs2: Reg::new( 1)}, OpFunct::M(OpMFunct::Remu)));
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn test_decode_amo() {
+        assert_eq!(decode(0x1008adaf).unwrap(), Instr::Atomic(RType { rd: Reg::new(27), rs1: Reg::new(17), rs2: Reg::new( 0)}, AtomicFunct::LrSc(LrScFunct::Lr)));
+        assert_eq!(decode(0x1867ab2f).unwrap(), Instr::Atomic(RType { rd: Reg::new(22), rs1: Reg::new(15), rs2: Reg::new( 6)}, AtomicFunct::LrSc(LrScFunct::Sc)));
+        assert_eq!(decode(0x096720af).unwrap(), Instr::Atomic(RType { rd: Reg::new( 1), rs1: Reg::new(14), rs2: Reg::new(22)}, AtomicFunct::Amo(AmoFunct::Swap)));
+        assert_eq!(decode(0x0081aeaf).unwrap(), Instr::Atomic(RType { rd: Reg::new(29), rs1: Reg::new( 3), rs2: Reg::new( 8)}, AtomicFunct::Amo(AmoFunct::Add)));
+        assert_eq!(decode(0x218525af).unwrap(), Instr::Atomic(RType { rd: Reg::new(11), rs1: Reg::new(10), rs2: Reg::new(24)}, AtomicFunct::Amo(AmoFunct::Xor)));
+        assert_eq!(decode(0x408eaaaf).unwrap(), Instr::Atomic(RType { rd: Reg::new(21), rs1: Reg::new(29), rs2: Reg::new( 8)}, AtomicFunct::Amo(AmoFunct::Or)));
+        assert_eq!(decode(0x603caa2f).unwrap(), Instr::Atomic(RType { rd: Reg::new(20), rs1: Reg::new(25), rs2: Reg::new( 3)}, AtomicFunct::Amo(AmoFunct::And)));
+        assert_eq!(decode(0x812c27af).unwrap(), Instr::Atomic(RType { rd: Reg::new(15), rs1: Reg::new(24), rs2: Reg::new(18)}, AtomicFunct::Amo(AmoFunct::Min)));
+        assert_eq!(decode(0xa1d2a3af).unwrap(), Instr::Atomic(RType { rd: Reg::new( 7), rs1: Reg::new( 5), rs2: Reg::new(29)}, AtomicFunct::Amo(AmoFunct::Max)));
+        assert_eq!(decode(0xc1892f2f).unwrap(), Instr::Atomic(RType { rd: Reg::new(30), rs1: Reg::new(18), rs2: Reg::new(24)}, AtomicFunct::Amo(AmoFunct::Minu)));
+        assert_eq!(decode(0xe0512daf).unwrap(), Instr::Atomic(RType { rd: Reg::new(27), rs1: Reg::new( 2), rs2: Reg::new( 5)}, AtomicFunct::Amo(AmoFunct::Maxu)));
     }
 }

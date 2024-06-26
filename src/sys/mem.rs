@@ -4,12 +4,16 @@ use crate::Exception;
 
 pub struct Memory {
     buf: Vec<u8>,
+    reserved_word: Option<u32>, // For atomic lr/sc
 }
 
 impl Memory {
     pub fn new(size: usize) -> Memory {
         let buf = vec![0; size];
-        Memory { buf }
+        Memory {
+            buf,
+            reserved_word: None,
+        }
     }
 
     // Views
@@ -49,7 +53,7 @@ impl Memory {
 
     pub fn read_u16(&self, addr: u32) -> Result<u16, Exception> {
         let addr = addr as usize;
-        if addr + 1 >= self.buf.len() {
+        if addr >= self.buf.len() {
             Err(Exception::LoadAccessFault)
         } else if addr & 0b1 != 0 {
             Err(Exception::LoadAddrMisaligned)
@@ -60,7 +64,7 @@ impl Memory {
 
     pub fn read_u32(&self, addr: u32) -> Result<u32, Exception> {
         let addr = addr as usize;
-        if addr + 3 >= self.buf.len() {
+        if addr >= self.buf.len() {
             Err(Exception::LoadAccessFault)
         } else if addr & 0b11 != 0 {
             Err(Exception::LoadAddrMisaligned)
@@ -74,20 +78,21 @@ impl Memory {
         }
     }
 
-    // Write
+    // Write (also clear reservation when needed)
     pub fn write_u8(&mut self, addr: u32, val: u8) -> Result<(), Exception> {
         let addr = addr as usize;
         if addr >= self.buf.len() {
             Err(Exception::StoreAccessFault)
         } else {
             self.buf[addr] = val;
+            self.clear_reservation_if_matched(addr as u32);
             Ok(())
         }
     }
 
     pub fn write_u16(&mut self, addr: u32, val: u16) -> Result<(), Exception> {
         let addr = addr as usize;
-        if addr + 1 >= self.buf.len() {
+        if addr >= self.buf.len() {
             Err(Exception::StoreAccessFault)
         } else if addr & 0b1 != 0 {
             Err(Exception::StoreAddrMisaligned)
@@ -95,13 +100,14 @@ impl Memory {
             let bytes = val.to_le_bytes();
             self.buf[addr] = bytes[0];
             self.buf[addr + 1] = bytes[1];
+            self.clear_reservation_if_matched(addr as u32);
             Ok(())
         }
     }
 
     pub fn write_u32(&mut self, addr: u32, val: u32) -> Result<(), Exception> {
         let addr = addr as usize;
-        if addr + 3 >= self.buf.len() {
+        if addr >= self.buf.len() {
             Err(Exception::StoreAccessFault)
         } else if addr & 0b11 != 0 {
             Err(Exception::StoreAddrMisaligned)
@@ -111,6 +117,18 @@ impl Memory {
             self.buf[addr + 1] = bytes[1];
             self.buf[addr + 2] = bytes[2];
             self.buf[addr + 3] = bytes[3];
+            self.clear_reservation_if_matched(addr as u32);
+            Ok(())
+        }
+    }
+
+    pub fn check_write_u32(&mut self, addr: u32) -> Result<(), Exception> {
+        let addr = addr as usize;
+        if addr >= self.buf.len() {
+            Err(Exception::StoreAccessFault)
+        } else if addr & 0b11 != 0 {
+            Err(Exception::StoreAddrMisaligned)
+        } else {
             Ok(())
         }
     }
@@ -118,7 +136,7 @@ impl Memory {
     // Instruction fetch
     pub fn fetch(&self, addr: u32) -> Result<u32, Exception> {
         let addr = addr as usize;
-        if addr + 3 >= self.buf.len() {
+        if addr >= self.buf.len() {
             Err(Exception::InstrAccessFault)
         } else if addr & 0b11 != 0 {
             Err(Exception::InstrAddrMisaligned)
@@ -129,6 +147,27 @@ impl Memory {
                 self.buf[addr + 2],
                 self.buf[addr + 3],
             ]))
+        }
+    }
+
+    // Reservation
+    pub fn reserve(&mut self, addr: u32) {
+        self.reserved_word = Some(addr >> 2);
+    }
+
+    pub fn is_reserved(&self, addr: u32) -> bool {
+        self.reserved_word.map_or(false, |word| word == addr >> 2)
+    }
+
+    pub fn clear_reservation(&mut self) {
+        self.reserved_word = None;
+    }
+
+    pub fn clear_reservation_if_matched(&mut self, addr: u32) {
+        if let Some(word) = self.reserved_word {
+            if word == addr >> 2 {
+                self.reserved_word = None;
+            }
         }
     }
 }
@@ -305,5 +344,123 @@ mod tests {
         assert_eq!(mem.fetch(MEM_SIZE + 1), Err(InstrAccessFault));
         assert_eq!(mem.fetch(MEM_SIZE + 2), Err(InstrAccessFault));
         assert_eq!(mem.fetch(MEM_SIZE + 3), Err(InstrAccessFault));
+    }
+
+    fn assert_word_reserved(mem: &Memory, addr: u32, expect: bool) {
+        assert_eq!(mem.is_reserved(addr), expect);
+        assert_eq!(mem.is_reserved(addr + 1), expect);
+        assert_eq!(mem.is_reserved(addr + 2), expect);
+        assert_eq!(mem.is_reserved(addr + 3), expect);
+    }
+
+    #[test]
+    fn test_reserve() {
+        let mut mem = Memory::new(MEM_SIZE as usize); // 1 kB
+
+        for i in 0..=3 {
+            mem.reserve(i);
+            assert_word_reserved(&mem, 0, true);
+            assert!(!mem.is_reserved(4));
+            assert!(!mem.is_reserved(u32::MAX));
+        }
+    }
+
+    #[test]
+    fn test_double_reserve() {
+        let mut mem = Memory::new(MEM_SIZE as usize); // 1 kB
+
+        for i in 0..=3 {
+            mem.reserve(i);
+            mem.reserve(4 + i);
+            assert_word_reserved(&mem, 0, false);
+            assert_word_reserved(&mem, 4, true);
+        }
+    }
+
+    #[test]
+    fn test_clear_reservation() {
+        let mut mem = Memory::new(MEM_SIZE as usize); // 1 kB
+
+        for i in 0..=3 {
+            mem.reserve(i);
+            mem.clear_reservation();
+            assert_word_reserved(&mem, 0, false);
+        }
+    }
+
+    #[test]
+    fn test_clear_reservation_if_matched() {
+        let mut mem = Memory::new(MEM_SIZE as usize); // 1 kB
+
+        for i in 0..=3 {
+            for j in 0..=3 {
+                mem.reserve(i);
+                mem.clear_reservation_if_matched(j);
+                assert_word_reserved(&mem, 0, false);
+            }
+        }
+    }
+
+    #[test]
+    fn test_keep_reservation_if_not_matched() {
+        let mut mem = Memory::new(MEM_SIZE as usize); // 1 kB
+
+        for i in 0..=3 {
+            for j in 0..=3 {
+                mem.reserve(i);
+                mem.clear_reservation_if_matched(4 + j);
+                assert_word_reserved(&mem, 0, true);
+            }
+        }
+    }
+
+    #[test]
+    fn test_clear_reservation_on_write_u8() {
+        let mut mem = Memory::new(MEM_SIZE as usize); // 1 kB
+
+        for i in 0..=3 {
+            for j in 0..=3 {
+                mem.reserve(i);
+                mem.write_u8(j, 0).unwrap();
+                assert_word_reserved(&mem, 0, false);
+            }
+        }
+    }
+
+    #[test]
+    fn test_clear_reservation_on_write_u16() {
+        let mut mem = Memory::new(MEM_SIZE as usize); // 1 kB
+
+        for i in 0..=3 {
+            for j in 0..=1 {
+                mem.reserve(i);
+                mem.write_u16(2 * j, 0).unwrap();
+                assert_word_reserved(&mem, 0, false);
+            }
+        }
+    }
+
+    #[test]
+    fn test_clear_reservation_on_write_u32() {
+        let mut mem = Memory::new(MEM_SIZE as usize); // 1 kB
+
+        for i in 0..=3 {
+            mem.reserve(i);
+            mem.write_u32(0, 0).unwrap();
+            assert_word_reserved(&mem, 0, false);
+        }
+    }
+
+    #[test]
+    fn test_keep_reservation_if_write_elsewhere() {
+        let mut mem = Memory::new(MEM_SIZE as usize); // 1 kB
+
+        for i in 0..=3 {
+            for j in 0..=3 {
+                mem.reserve(i);
+                mem.write_u8(4 + j, 0).unwrap();
+                assert_word_reserved(&mem, 0, true);
+            }
+        }
     }
 }

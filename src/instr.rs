@@ -16,6 +16,7 @@ pub enum Instr {
     Jal(JType),
     Jalr(IType),
     Branch(BType, BranchFunct),
+    Atomic(RType, AtomicFunct),
     Fence,
     System,
 }
