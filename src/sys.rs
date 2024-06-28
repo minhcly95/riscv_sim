@@ -1,8 +1,10 @@
 use crate::{decode, exec::Result, execute, Exception, Reg};
 
+pub mod control;
 pub mod mem;
 pub mod state;
 
+use control::*;
 use mem::*;
 use state::*;
 
@@ -10,6 +12,7 @@ use state::*;
 pub struct System {
     pub state: State,
     pub mem: Memory,
+    pub ctrl: Control,
 }
 
 impl System {
@@ -17,6 +20,7 @@ impl System {
         System {
             state: State::new(),
             mem: Memory::new(mem_size),
+            ctrl: Control::new(),
         }
     }
 
@@ -36,6 +40,56 @@ impl System {
         self.state.pc_mut()
     }
 
+    pub fn push_trap_m(&mut self, trap: Trap) {
+        // Save previous status
+        self.ctrl.mpie = self.ctrl.mie;
+        self.ctrl.mpp = self.ctrl.privilege;
+        // Push new status
+        self.ctrl.mie = false;
+        self.ctrl.privilege = MPriv::M;
+        // Trap information
+        self.ctrl.mepc = self.pc();
+        self.ctrl.mcause = trap;
+        self.ctrl.mtval = 0;
+        // Jump to trap vector
+        *self.pc_mut() = match self.ctrl.mtvec_mode {
+            MTvecMode::Direct => self.ctrl.mtvec_base,
+            MTvecMode::Vectored => self.ctrl.mtvec_base, // No interrupt exists
+        }
+    }
+
+    pub fn pop_trap_m(&mut self) {
+        // Restore previous status
+        self.ctrl.mie = self.ctrl.mpie;
+        self.ctrl.privilege = self.ctrl.mpp;
+        // Push dummy status
+        self.ctrl.mpie = true;
+        self.ctrl.mpp = MPriv::U;
+        // Jump back to original PC
+        *self.pc_mut() = self.ctrl.mepc;
+        // Also clear LR reservation
+        self.mem.clear_reservation();
+    }
+
+    fn retire(&mut self, res: &Result) {
+        match res {
+            Ok(_) => {
+                // Count the number of retired instruction if Ok
+                if !self.ctrl.minstret_inhibit {
+                    self.ctrl.minstret = self.ctrl.minstret.wrapping_add(1)
+                }
+            }
+            Err(e) => {
+                // Handle the trap if there's an exception
+                self.push_trap_m(Trap::Exception(*e));
+            }
+        }
+        // Count the number of cycles passed
+        if !self.ctrl.mcycle_inhibit {
+            self.ctrl.mcycle = self.ctrl.mcycle.wrapping_add(1);
+        }
+    }
+
     pub fn step(&mut self) -> Result {
         // Fetch
         let pc = self.pc();
@@ -45,10 +99,15 @@ impl System {
         let instr = decode(code).ok_or(Exception::IllegalInstr)?;
 
         // Execute
-        execute(self, &instr)
+        let exec_res = execute(self, &instr);
+
+        // Retire
+        self.retire(&exec_res);
+
+        exec_res
     }
 
-    pub fn run_until_break(&mut self) -> Exception {
+    pub fn run_until_exception(&mut self) -> Exception {
         loop {
             if let Err(e) = self.step() {
                 break e;

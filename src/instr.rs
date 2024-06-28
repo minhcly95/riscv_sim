@@ -1,3 +1,4 @@
+pub mod csr;
 pub mod format;
 pub mod funct;
 pub mod reg;
@@ -18,5 +19,6 @@ pub enum Instr {
     Branch(BType, BranchFunct),
     Atomic(RType, AtomicFunct),
     Fence,
-    System,
+    Env(EnvFunct),
+    Csr(CsrType, CsrFunct),
 }

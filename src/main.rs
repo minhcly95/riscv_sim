@@ -8,6 +8,6 @@ fn main() {
 
     let mut env = Env::new();
     env.load_from_file(&file_name).unwrap();
-    env.run_until_break();
+    env.run_until_exception();
     println!("{:#?}", env.sys);
 }

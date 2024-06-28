@@ -23,8 +23,8 @@ impl Env {
         Ok(())
     }
 
-    pub fn run_until_break(&mut self) -> Exception {
-        let ex = self.sys.run_until_break();
+    pub fn run_until_exception(&mut self) -> Exception {
+        let ex = self.sys.run_until_exception();
         self.log_with_pc(&format!(
             "{} due to an exception: {}",
             "Break".yellow(),

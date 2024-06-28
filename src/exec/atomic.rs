@@ -1,10 +1,9 @@
-use core::panic;
-
 use super::{advance_pc, Result};
 use crate::{
     instr::{funct::*, reg::Reg},
     Exception, System,
 };
+use core::panic;
 
 pub fn execute_atomic(sys: &mut System, rd: &Reg, rs1: &Reg, rs2: &Reg, f: &AtomicFunct) -> Result {
     match f {

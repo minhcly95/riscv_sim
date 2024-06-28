@@ -1,4 +1,4 @@
-use crate::instr::{format::*, funct::*, *};
+use crate::instr::{csr::CsrReg, format::*, funct::*, *};
 
 const OPCODE_MASK: u32 = (1 << 7) - 1;
 
@@ -11,9 +11,9 @@ const OPCODE_STORE: u8 = 0b0100011;
 const OPCODE_JAL: u8 = 0b1101111;
 const OPCODE_JALR: u8 = 0b1100111;
 const OPCODE_BRANCH: u8 = 0b1100011;
+const OPCODE_AMO: u8 = 0b0101111;
 const OPCODE_MISC: u8 = 0b0001111;
 const OPCODE_SYSTEM: u8 = 0b1110011;
-const OPCODE_AMO: u8 = 0b0101111;
 
 pub fn decode(code: u32) -> Option<Instr> {
     let opcode = (code & OPCODE_MASK) as u8;
@@ -37,15 +37,51 @@ pub fn decode(code: u32) -> Option<Instr> {
         OPCODE_BRANCH => Some(Instr::Branch(BType::from(code), BranchFunct::from(code)?)),
         OPCODE_AMO => Some(Instr::Atomic(RType::from(code), AtomicFunct::from(code)?)),
         OPCODE_MISC => Some(Instr::Fence),
-        OPCODE_SYSTEM => Some(Instr::System),
+        OPCODE_SYSTEM => decode_system(code),
         _ => None,
+    }
+}
+
+fn decode_system(code: u32) -> Option<Instr> {
+    let IType { rd, rs1, imm } = IType::from(code);
+    let f3 = funct3(code);
+    match f3 {
+        0b000 => {
+            if rd.index() != 0 || rs1.index() != 0 {
+                return None;
+            }
+            match imm {
+                0b0000000_00000 => Some(Instr::Env(EnvFunct::Call)),
+                0b0000000_00001 => Some(Instr::Env(EnvFunct::Break)),
+                0b0011000_00010 => Some(Instr::Env(EnvFunct::Mret)),
+                0b0001000_00101 => Some(Instr::Env(EnvFunct::Wfi)),
+                _ => None,
+            }
+        }
+        _ => Some(Instr::Csr(
+            CsrType {
+                rd,
+                src: if f3 & 0b100 == 0 {
+                    CsrSrc::Reg(rs1)
+                } else {
+                    CsrSrc::Imm(rs1.index())
+                },
+                csr: CsrReg::from(imm)?,
+            },
+            match f3 & 0b011 {
+                0b01 => CsrFunct::Rw,
+                0b10 => CsrFunct::Rs,
+                0b11 => CsrFunct::Rc,
+                _ => None?,
+            },
+        )),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::instr::reg::Reg;
+    use crate::instr::{csr::*, reg::Reg};
 
     #[test]
     #[rustfmt::skip]
@@ -137,8 +173,8 @@ mod tests {
             })
         );
         assert_eq!(decode(0x0ff0000f).unwrap(), Instr::Fence);
-        assert_eq!(decode(0x00000073).unwrap(), Instr::System);
-        assert_eq!(decode(0x00100073).unwrap(), Instr::System);
+        assert_eq!(decode(0x00000073).unwrap(), Instr::Env(EnvFunct::Call));
+        assert_eq!(decode(0x00100073).unwrap(), Instr::Env(EnvFunct::Break));
     }
 
     #[test]
@@ -174,5 +210,16 @@ mod tests {
         assert_eq!(decode(0xa1d2a3af).unwrap(), Instr::Atomic(RType { rd: Reg::new( 7), rs1: Reg::new( 5), rs2: Reg::new(29)}, AtomicFunct::Amo(AmoFunct::Max)));
         assert_eq!(decode(0xc1892f2f).unwrap(), Instr::Atomic(RType { rd: Reg::new(30), rs1: Reg::new(18), rs2: Reg::new(24)}, AtomicFunct::Amo(AmoFunct::Minu)));
         assert_eq!(decode(0xe0512daf).unwrap(), Instr::Atomic(RType { rd: Reg::new(27), rs1: Reg::new( 2), rs2: Reg::new( 5)}, AtomicFunct::Amo(AmoFunct::Maxu)));
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn test_decode_csr() {
+        assert_eq!(decode(0xf1119a73).unwrap(), Instr::Csr(CsrType { rd: Reg::new(20), src: CsrSrc::Reg(Reg::new( 3)), csr: CsrReg::M(CsrRegM::MVendorId)}, CsrFunct::Rw));
+        assert_eq!(decode(0xf127a3f3).unwrap(), Instr::Csr(CsrType { rd: Reg::new( 7), src: CsrSrc::Reg(Reg::new(15)), csr: CsrReg::M(CsrRegM::MArchId)}, CsrFunct::Rs));
+        assert_eq!(decode(0xf1383373).unwrap(), Instr::Csr(CsrType { rd: Reg::new( 6), src: CsrSrc::Reg(Reg::new(16)), csr: CsrReg::M(CsrRegM::MImpId)}, CsrFunct::Rc));
+        assert_eq!(decode(0xf14ed2f3).unwrap(), Instr::Csr(CsrType { rd: Reg::new( 5), src: CsrSrc::Imm(29), csr: CsrReg::M(CsrRegM::MHartId)}, CsrFunct::Rw));
+        assert_eq!(decode(0xf15366f3).unwrap(), Instr::Csr(CsrType { rd: Reg::new(13), src: CsrSrc::Imm( 6), csr: CsrReg::M(CsrRegM::MConfigPtr)}, CsrFunct::Rs));
+        assert_eq!(decode(0x3002f373).unwrap(), Instr::Csr(CsrType { rd: Reg::new( 6), src: CsrSrc::Imm( 5), csr: CsrReg::M(CsrRegM::MStatus)}, CsrFunct::Rc));
     }
 }

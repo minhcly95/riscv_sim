@@ -1,4 +1,6 @@
 use super::reg::Reg;
+use super::csr::CsrReg;
+use super::CsrSrc;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct RType {
@@ -38,6 +40,13 @@ pub struct UType {
 pub struct JType {
     pub rd: Reg,
     pub imm: i32,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct CsrType {
+    pub rd: Reg,
+    pub src: CsrSrc,
+    pub csr: CsrReg,
 }
 
 const I_MASK: u32 = (1 << 12) - 1;

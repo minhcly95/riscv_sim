@@ -1,11 +1,13 @@
+use super::reg::Reg;
+
 const FUNCT3_MASK: u32 = (1 << 3) - 1;
 const FUNCT7_MASK: u32 = (1 << 7) - 1;
 
-fn funct3(code: u32) -> u8 {
+pub fn funct3(code: u32) -> u8 {
     ((code >> 12) & FUNCT3_MASK) as u8
 }
 
-fn funct7(code: u32) -> u8 {
+pub fn funct7(code: u32) -> u8 {
     ((code >> 25) & FUNCT7_MASK) as u8
 }
 
@@ -103,6 +105,27 @@ pub enum AmoFunct {
     Max,
     Minu,
     Maxu,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum EnvFunct {
+    Call,
+    Break,
+    Mret,
+    Wfi,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum CsrFunct {
+    Rw,
+    Rs,
+    Rc,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum CsrSrc {
+    Reg(Reg),
+    Imm(u8),
 }
 
 impl OpFunct {
@@ -215,6 +238,15 @@ impl AtomicFunct {
             0b11000 => Some(AtomicFunct::Amo(AmoFunct::Minu)),
             0b11100 => Some(AtomicFunct::Amo(AmoFunct::Maxu)),
             _ => None,
+        }
+    }
+}
+
+impl CsrSrc {
+    pub fn is_zero(&self) -> bool {
+        match self {
+            CsrSrc::Reg(r) => r.index() == 0,
+            CsrSrc::Imm(i) => *i == 0,
         }
     }
 }

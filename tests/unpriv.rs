@@ -4,7 +4,7 @@ use std::fs;
 fn test_with_ref(binary_file: &str, ref_file: &str, num_words: usize, is_hex: bool) {
     let mut env = Env::new();
     env.load_from_file(binary_file).unwrap();
-    env.run_until_break();
+    env.run_until_exception();
 
     // Ref file is a text file containing a list of hex numbers
     let ref_dat: Vec<_> = fs::read_to_string(ref_file)
@@ -65,6 +65,16 @@ fn amo_test() {
         "asm/target/amo_test.bin",
         "asm/dat/amo_test_ref.dat",
         36,
+        true,
+    );
+}
+
+#[test]
+fn csr_test() {
+    test_with_ref(
+        "asm/target/csr_test.bin",
+        "asm/dat/csr_test_ref.dat",
+        8,
         true,
     );
 }
