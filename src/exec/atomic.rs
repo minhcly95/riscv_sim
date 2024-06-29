@@ -41,7 +41,9 @@ fn store_conditional(sys: &mut System, rd: &Reg, rs1: &Reg, rs2: &Reg) -> Result
 }
 
 fn execute_amo(sys: &mut System, rd: &Reg, rs1: &Reg, rs2: &Reg, f: &AmoFunct) -> Result {
+    // Always read rs1 and rs2 before writing rd
     let addr = sys.reg(rs1) as u32;
+    let rs2 = sys.reg(rs2);
 
     // Read the data and store in rd
     let data = sys.mem.read_u32(addr).map_err(|e| {
@@ -56,7 +58,6 @@ fn execute_amo(sys: &mut System, rd: &Reg, rs1: &Reg, rs2: &Reg, f: &AmoFunct) -
 
     // Modify the data as store back at addr
     let new_data: i32;
-    let rs2 = sys.reg(rs2);
     match f {
         AmoFunct::Add => new_data = data.wrapping_add(rs2),
         AmoFunct::Swap => new_data = rs2,

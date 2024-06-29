@@ -17,23 +17,26 @@ pub fn execute_csr(sys: &mut System, rd: &Reg, src: &CsrSrc, csr: &CsrReg, f: &C
     match f {
         CsrFunct::Rw => {
             if rd.index() != 0 {
-                *sys.reg_mut(rd) = csr_read(sys, csr)? as i32;
+                let val = csr_read(sys, csr)?;
+                csr_write(sys, csr, get_src(sys, src))?;
+                *sys.reg_mut(rd) = val as i32;
+            } else {
+                csr_write(sys, csr, get_src(sys, src))?;
             }
-            csr_write(sys, csr, get_src(sys, src))?;
         }
         CsrFunct::Rs => {
             let val = csr_read(sys, csr)?;
-            *sys.reg_mut(rd) = val as i32;
             if !src.is_zero() {
                 csr_write(sys, csr, val | get_src(sys, src))?;
             }
+            *sys.reg_mut(rd) = val as i32;
         }
         CsrFunct::Rc => {
             let val = csr_read(sys, csr)?;
-            *sys.reg_mut(rd) = val as i32;
             if !src.is_zero() {
                 csr_write(sys, csr, val & !get_src(sys, src))?;
             }
+            *sys.reg_mut(rd) = val as i32;
         }
     }
     advance_pc(sys);

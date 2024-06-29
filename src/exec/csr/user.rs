@@ -1,4 +1,4 @@
-use super::{machine::*, Result, Result32};
+use super::{machine::*, MPriv, Result, Result32};
 use crate::{
     instr::csr::{CsrRegU::*, *},
     Exception::IllegalInstr,
@@ -31,8 +31,8 @@ pub fn csr_write_u(_sys: &mut System, csr: &CsrRegU, _val: u32) -> Result {
 
 // ------------------ CYCLE ---------------------
 fn read_cycle(sys: &System) -> Result32 {
-    // Can only read if enabled in mcounteren
-    if sys.ctrl.mcycle_en {
+    // Can only read if in M-mode or enabled in mcounteren
+    if sys.ctrl.privilege == MPriv::M || sys.ctrl.mcycle_en {
         Ok(read_mcycle(sys))
     } else {
         Err(IllegalInstr)
@@ -40,8 +40,8 @@ fn read_cycle(sys: &System) -> Result32 {
 }
 
 fn read_cycleh(sys: &System) -> Result32 {
-    // Can only read if enabled in mcounteren
-    if sys.ctrl.mcycle_en {
+    // Can only read if in M-mode or enabled in mcounteren
+    if sys.ctrl.privilege == MPriv::M || sys.ctrl.mcycle_en {
         Ok(read_mcycleh(sys))
     } else {
         Err(IllegalInstr)
@@ -50,8 +50,8 @@ fn read_cycleh(sys: &System) -> Result32 {
 
 // ----------------- INSTRET --------------------
 fn read_instret(sys: &System) -> Result32 {
-    // Can only read if enabled in mcounteren
-    if sys.ctrl.minstret_en {
+    // Can only read if in M-mode or enabled in mcounteren
+    if sys.ctrl.privilege == MPriv::M || sys.ctrl.minstret_en {
         Ok(read_minstret(sys))
     } else {
         Err(IllegalInstr)
@@ -59,8 +59,8 @@ fn read_instret(sys: &System) -> Result32 {
 }
 
 fn read_instreth(sys: &System) -> Result32 {
-    // Can only read if enabled in mcounteren
-    if sys.ctrl.minstret_en {
+    // Can only read if in M-mode or enabled in mcounteren
+    if sys.ctrl.privilege == MPriv::M || sys.ctrl.minstret_en {
         Ok(read_minstreth(sys))
     } else {
         Err(IllegalInstr)

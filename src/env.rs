@@ -15,22 +15,65 @@ impl Env {
     pub fn load_from_file(&mut self, file_name: &str) -> io::Result<()> {
         let image = fs::read(file_name)?;
         let len = image.len();
-        self.log_with_pc(&format!(
-            "{} with {len} bytes",
-            "Load image".blue()
-        ));
+        self.log_with_pc(&format!("{} with {len} bytes", "Load image".blue()));
         self.sys.mem.as_u8_mut()[0..len].copy_from_slice(&image);
         Ok(())
     }
 
     pub fn run_until_exception(&mut self) -> Exception {
-        let ex = self.sys.run_until_exception();
-        self.log_with_pc(&format!(
-            "{} due to an exception: {}",
-            "Break".yellow(),
-            format!("{:?}", ex).yellow()
-        ));
-        ex
+        loop {
+            if let Err(ex) = self.sys.step() {
+                self.log_with_pc(&format!(
+                    "{} due to an exception: {}",
+                    "Break".yellow(),
+                    format!("{:?}", ex).yellow()
+                ));
+                return ex;
+            }
+        }
+    }
+
+    pub fn run_until_ecall(&mut self) {
+        loop {
+            if let Err(ex) = self.sys.step() {
+                if ex == Exception::EcallFromM
+                    || ex == Exception::EcallFromS
+                    || ex == Exception::EcallFromU
+                {
+                    self.log_with_pc(&format!(
+                        "{} due to an exception: {}",
+                        "Break".yellow(),
+                        format!("{:?}", ex).yellow()
+                    ));
+                    return;
+                }
+            }
+        }
+    }
+
+    pub fn run_for(&mut self, repeat: usize) {
+        for _ in 0..repeat {
+            let _ = self.sys.step();
+        }
+    }
+
+    pub fn run_for_or_until_ecall(&mut self, repeat: usize) -> Result<(), Exception> {
+        for _ in 0..repeat {
+            if let Err(ex) = self.sys.step() {
+                if ex == Exception::EcallFromM
+                    || ex == Exception::EcallFromS
+                    || ex == Exception::EcallFromU
+                {
+                    self.log_with_pc(&format!(
+                        "{} due to an exception: {}",
+                        "Break".yellow(),
+                        format!("{:?}", ex).yellow()
+                    ));
+                    return Err(ex);
+                }
+            }
+        }
+        Ok(())
     }
 
     fn log_with_pc(&self, str: &str) {

@@ -1,4 +1,5 @@
 use crate::{decode, exec::Result, execute, Exception, Reg};
+use colored::*;
 
 pub mod control;
 pub mod mem;
@@ -71,6 +72,19 @@ impl System {
         self.mem.clear_reservation();
     }
 
+    fn fetch_decode_exec(&mut self) -> Result {
+        // Fetch
+        let pc = self.pc();
+        let code: u32 = self.mem.fetch(pc)?;
+
+        // Decode
+        let instr = decode(code).ok_or(Exception::IllegalInstr)?;
+        println!("{:8x} {:?}", pc, instr);
+
+        // Execute
+        execute(self, &instr)
+    }
+
     fn retire(&mut self, res: &Result) {
         match res {
             Ok(_) => {
@@ -91,27 +105,15 @@ impl System {
     }
 
     pub fn step(&mut self) -> Result {
-        // Fetch
-        let pc = self.pc();
-        let code: u32 = self.mem.fetch(pc)?;
-
-        // Decode
-        let instr = decode(code).ok_or(Exception::IllegalInstr)?;
-
-        // Execute
-        let exec_res = execute(self, &instr);
+        // Fetch decode exec
+        let res = self.fetch_decode_exec();
+        if let Err(e) = res {
+            println!("{:8x} {}", self.pc(), format!("{:?}", e).yellow());
+        }
 
         // Retire
-        self.retire(&exec_res);
+        self.retire(&res);
 
-        exec_res
-    }
-
-    pub fn run_until_exception(&mut self) -> Exception {
-        loop {
-            if let Err(e) = self.step() {
-                break e;
-            }
-        }
+        res
     }
 }
