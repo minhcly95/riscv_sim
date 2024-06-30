@@ -1,6 +1,7 @@
 use super::{advance_pc, Result};
 use crate::{
     instr::{funct::*, reg::Reg},
+    trap::TrapCause,
     Exception, System,
 };
 use core::panic;
@@ -46,13 +47,18 @@ fn execute_amo(sys: &mut System, rd: &Reg, rs1: &Reg, rs2: &Reg, f: &AmoFunct) -
     let rs2 = sys.reg(rs2);
 
     // Read the data and store in rd
-    let data = sys.mem.read_u32(addr).map_err(|e| {
+    let data = sys.mem.read_u32(addr).map_err(|mut t| {
         // An exception raised from an AMO counts as a store exception
-        match e {
-            Exception::LoadAccessFault => Exception::StoreAccessFault,
-            Exception::LoadAddrMisaligned => Exception::StoreAddrMisaligned,
+        t.cause = match t.cause {
+            TrapCause::Exception(Exception::LoadAccessFault) => {
+                TrapCause::Exception(Exception::StoreAccessFault)
+            }
+            TrapCause::Exception(Exception::LoadAddrMisaligned) => {
+                TrapCause::Exception(Exception::StoreAddrMisaligned)
+            }
             _ => panic!("Unexpected exception when calling Memory::read_u32"),
-        }
+        };
+        t
     })? as i32;
     *sys.reg_mut(rd) = data;
 
@@ -69,13 +75,14 @@ fn execute_amo(sys: &mut System, rd: &Reg, rs1: &Reg, rs2: &Reg, f: &AmoFunct) -
         AmoFunct::Minu => new_data = (data as u32).min(rs2 as u32) as i32,
         AmoFunct::Maxu => new_data = (data as u32).max(rs2 as u32) as i32,
     }
+    println!("{:08x} {:08x} {:08x}", data, rs2, new_data);
     sys.mem.write_u32(addr, new_data as u32)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::exec::store::execute_store;
+    use crate::{exec::store::execute_store, Trap};
     use Exception::*;
 
     const TEST_ADDR: u32 = 0x4;
@@ -141,6 +148,7 @@ mod tests {
     }
 
     fn assert_amo_failed(sys: &mut System, rd: u8, rs1: u8, rs2: u8, f: AmoFunct, ex: Exception) {
+        let addr = sys.reg(&Reg::new(rs1)) as u32;
         assert_eq!(
             execute_atomic(
                 sys,
@@ -149,7 +157,7 @@ mod tests {
                 &Reg::new(rs2),
                 &AtomicFunct::Amo(f),
             ),
-            Err(ex)
+            Err(Trap::from_exception(ex, addr))
         );
     }
 
@@ -318,10 +326,16 @@ mod tests {
         let mut sys = System::new(16);
 
         *sys.reg_mut(&Reg::new(1)) = 16;
-        assert_eq!(load_reserved(&mut sys, 2, 1), Err(LoadAccessFault));
+        assert_eq!(
+            load_reserved(&mut sys, 2, 1),
+            Err(Trap::from_exception(LoadAccessFault, 16))
+        );
 
         *sys.reg_mut(&Reg::new(1)) = -1;
-        assert_eq!(load_reserved(&mut sys, 2, 1), Err(LoadAccessFault));
+        assert_eq!(
+            load_reserved(&mut sys, 2, 1),
+            Err(Trap::from_exception(LoadAccessFault, u32::MAX))
+        );
     }
 
     #[test]
@@ -329,13 +343,22 @@ mod tests {
         let mut sys = System::new(16);
 
         *sys.reg_mut(&Reg::new(1)) = 1;
-        assert_eq!(load_reserved(&mut sys, 2, 1), Err(LoadAddrMisaligned));
+        assert_eq!(
+            load_reserved(&mut sys, 2, 1),
+            Err(Trap::from_exception(LoadAddrMisaligned, 1))
+        );
 
         *sys.reg_mut(&Reg::new(1)) = 2;
-        assert_eq!(load_reserved(&mut sys, 2, 1), Err(LoadAddrMisaligned));
+        assert_eq!(
+            load_reserved(&mut sys, 2, 1),
+            Err(Trap::from_exception(LoadAddrMisaligned, 2))
+        );
 
         *sys.reg_mut(&Reg::new(1)) = 3;
-        assert_eq!(load_reserved(&mut sys, 2, 1), Err(LoadAddrMisaligned));
+        assert_eq!(
+            load_reserved(&mut sys, 2, 1),
+            Err(Trap::from_exception(LoadAddrMisaligned, 3))
+        );
     }
 
     #[test]
@@ -343,10 +366,16 @@ mod tests {
         let mut sys = System::new(16);
 
         *sys.reg_mut(&Reg::new(1)) = 16;
-        assert_eq!(store_conditional(&mut sys, 4, 1, 2), Err(StoreAccessFault));
+        assert_eq!(
+            store_conditional(&mut sys, 4, 1, 2),
+            Err(Trap::from_exception(StoreAccessFault, 16))
+        );
 
         *sys.reg_mut(&Reg::new(1)) = -1;
-        assert_eq!(store_conditional(&mut sys, 4, 1, 2), Err(StoreAccessFault));
+        assert_eq!(
+            store_conditional(&mut sys, 4, 1, 2),
+            Err(Trap::from_exception(StoreAccessFault, u32::MAX))
+        );
     }
 
     #[test]
@@ -356,19 +385,19 @@ mod tests {
         *sys.reg_mut(&Reg::new(1)) = 1;
         assert_eq!(
             store_conditional(&mut sys, 4, 1, 2),
-            Err(StoreAddrMisaligned)
+            Err(Trap::from_exception(StoreAddrMisaligned, 1))
         );
 
         *sys.reg_mut(&Reg::new(1)) = 2;
         assert_eq!(
             store_conditional(&mut sys, 4, 1, 2),
-            Err(StoreAddrMisaligned)
+            Err(Trap::from_exception(StoreAddrMisaligned, 2))
         );
 
         *sys.reg_mut(&Reg::new(1)) = 3;
         assert_eq!(
             store_conditional(&mut sys, 4, 1, 2),
-            Err(StoreAddrMisaligned)
+            Err(Trap::from_exception(StoreAddrMisaligned, 3))
         );
     }
 
@@ -389,6 +418,37 @@ mod tests {
         assert_amo(&mut sys, 3, 0, 2, AmoFunct::Max, 0xd92f8ce3, 0x51290ce3);
         assert_amo(&mut sys, 3, 0, 1, AmoFunct::Minu, 0x51290ce3, 0x51290ce3);
         assert_amo(&mut sys, 3, 0, 1, AmoFunct::Maxu, 0x51290ce3, 0xbcfec832);
+
+        assert_eq!(sys.pc(), 10 * 4);
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn test_amo_same_reg() {
+        // Test everything using only 1 register to check for data races (write must be after read)
+        let mut sys = System::new(16);
+        sys.mem.write_u32(0, 0).unwrap();
+
+        *sys.state.reg_mut(&Reg::new(1)) = 0xbcfec832_u32 as i32;
+        assert_amo(&mut sys, 1, 0, 1, AmoFunct::Swap, 0x00000000, 0xbcfec832);
+        *sys.state.reg_mut(&Reg::new(1)) = 0x51290ce3_u32 as i32;
+        assert_amo(&mut sys, 1, 0, 1, AmoFunct::Add, 0xbcfec832, 0x0e27d515);
+        *sys.state.reg_mut(&Reg::new(1)) = 0xbcfec832_u32 as i32;
+        assert_amo(&mut sys, 1, 0, 1, AmoFunct::Add, 0x0e27d515, 0xcb269d47);
+        *sys.state.reg_mut(&Reg::new(1)) = 0x51290ce3_u32 as i32;
+        assert_amo(&mut sys, 1, 0, 1, AmoFunct::Xor, 0xcb269d47, 0x9a0f91a4);
+        *sys.state.reg_mut(&Reg::new(1)) = 0xbcfec832_u32 as i32;
+        assert_amo(&mut sys, 1, 0, 1, AmoFunct::And, 0x9a0f91a4, 0x980e8020);
+        *sys.state.reg_mut(&Reg::new(1)) = 0x51290ce3_u32 as i32;
+        assert_amo(&mut sys, 1, 0, 1, AmoFunct::Or, 0x980e8020, 0xd92f8ce3);
+        *sys.state.reg_mut(&Reg::new(1)) = 0x51290ce3_u32 as i32;
+        assert_amo(&mut sys, 1, 0, 1, AmoFunct::Min, 0xd92f8ce3, 0xd92f8ce3);
+        *sys.state.reg_mut(&Reg::new(1)) = 0x51290ce3_u32 as i32;
+        assert_amo(&mut sys, 1, 0, 1, AmoFunct::Max, 0xd92f8ce3, 0x51290ce3);
+        *sys.state.reg_mut(&Reg::new(1)) = 0xbcfec832_u32 as i32;
+        assert_amo(&mut sys, 1, 0, 1, AmoFunct::Minu, 0x51290ce3, 0x51290ce3);
+        *sys.state.reg_mut(&Reg::new(1)) = 0xbcfec832_u32 as i32;
+        assert_amo(&mut sys, 1, 0, 1, AmoFunct::Maxu, 0x51290ce3, 0xbcfec832);
 
         assert_eq!(sys.pc(), 10 * 4);
     }

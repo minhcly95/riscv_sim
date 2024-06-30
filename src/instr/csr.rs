@@ -7,6 +7,7 @@ pub enum CsrReg {
 #[derive(Debug, PartialEq, Eq)]
 pub enum CsrRegU {
     Cycle,
+    Time,
     InstRet,
     HpmCounter(u8),
     Cycleh,
@@ -63,6 +64,7 @@ impl CsrReg {
         match imm {
             // Unprivileged counter/timer
             0xc00 => Some(Self::U(CsrRegU::Cycle)),
+            0xc01 => Some(Self::U(CsrRegU::Time)),
             0xc02 => Some(Self::U(CsrRegU::InstRet)),
             i @ 0xc03..=0xc1f => Some(Self::U(CsrRegU::HpmCounter((i - 0xc00) as u8))),
             0xc80 => Some(Self::U(CsrRegU::Cycleh)),

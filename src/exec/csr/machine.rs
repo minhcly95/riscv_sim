@@ -1,8 +1,8 @@
 use super::{Result, Result32};
 use crate::{
     instr::csr::{CsrRegM::*, *},
-    sys::control::*,
-    Exception::IllegalInstr,
+    sys::{control::*, make_illegal},
+    trap::TrapCause,
     System,
 };
 
@@ -24,13 +24,13 @@ pub fn csr_read_m(sys: &mut System, csr: &CsrRegM) -> Result32 {
         // Machine trap setup
         MStatus => Ok(read_mstatus(sys)),
         MIsa => Ok(MISA),
-        MEdeleg => Err(IllegalInstr), // S-mode not supported
-        MIdeleg => Err(IllegalInstr), // S-mode not supported
-        MIe => Ok(0),                 // No interrupt exists
+        MEdeleg => Err(make_illegal(sys)), // S-mode not supported
+        MIdeleg => Err(make_illegal(sys)), // S-mode not supported
+        MIe => Ok(0),                      // No interrupt exists
         MTvec => Ok(read_mtvec(sys)),
         MCounterEn => Ok(read_mcounteren(sys)),
         MStatush => Ok(0),
-        MEdelegh => Err(IllegalInstr), // S-mode not supported
+        MEdelegh => Err(make_illegal(sys)), // S-mode not supported
         // Machine trap handling
         MScratch => Ok(read_mscratch(sys)),
         MEpc => Ok(read_mepc(sys)),
@@ -60,21 +60,21 @@ pub fn csr_read_m(sys: &mut System, csr: &CsrRegM) -> Result32 {
 pub fn csr_write_m(sys: &mut System, csr: &CsrRegM, val: u32) -> Result {
     match csr {
         // Machine information (read only)
-        MVendorId => Err(IllegalInstr),
-        MArchId => Err(IllegalInstr),
-        MImpId => Err(IllegalInstr),
-        MHartId => Err(IllegalInstr),
-        MConfigPtr => Err(IllegalInstr),
+        MVendorId => Err(make_illegal(sys)),
+        MArchId => Err(make_illegal(sys)),
+        MImpId => Err(make_illegal(sys)),
+        MHartId => Err(make_illegal(sys)),
+        MConfigPtr => Err(make_illegal(sys)),
         // Machine trap setup
         MStatus => Ok(write_mstatus(sys, val)),
         MIsa => Ok(()),
-        MEdeleg => Err(IllegalInstr), // S-mode not supported
-        MIdeleg => Err(IllegalInstr), // S-mode not supported
-        MIe => Ok(()),                // No interrupt exists
+        MEdeleg => Err(make_illegal(sys)), // S-mode not supported
+        MIdeleg => Err(make_illegal(sys)), // S-mode not supported
+        MIe => Ok(()),                     // No interrupt exists
         MTvec => Ok(write_mtvec(sys, val)),
         MCounterEn => Ok(write_mcounteren(sys, val)),
         MStatush => Ok(()),
-        MEdelegh => Err(IllegalInstr), // S-mode not supported
+        MEdelegh => Err(make_illegal(sys)), // S-mode not supported
         // Machine trap handling
         MScratch => Ok(write_mscratch(sys, val)),
         MEpc => Ok(write_mepc(sys, val)),
@@ -182,25 +182,25 @@ fn write_mepc(sys: &mut System, val: u32) {
 
 // ------------------ MCAUSE --------------------
 fn read_mcause(sys: &System) -> u32 {
-    sys.ctrl.mcause.to_int()
+    sys.ctrl.mtrap.cause.to_int()
 }
 
 fn write_mcause(sys: &mut System, val: u32) -> Result {
-    if let Some(mcause) = Trap::from(val) {
-        sys.ctrl.mcause = mcause;
+    if let Some(mcause) = TrapCause::from(val) {
+        sys.ctrl.mtrap.cause = mcause;
         Ok(())
     } else {
-        Err(IllegalInstr)
+        Err(make_illegal(sys))
     }
 }
 
 // ------------------ MTVAL ---------------------
 fn read_mtval(sys: &System) -> u32 {
-    sys.ctrl.mtval
+    sys.ctrl.mtrap.val
 }
 
 fn write_mtval(sys: &mut System, val: u32) {
-    sys.ctrl.mtval = val;
+    sys.ctrl.mtrap.val = val;
 }
 
 // ----------------- MENVCFG --------------------

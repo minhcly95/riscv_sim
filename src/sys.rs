@@ -1,4 +1,4 @@
-use crate::{decode, exec::Result, execute, Exception, Reg};
+use crate::{decode, execute, trap::TrapCause, Exception, Reg, Result, Trap};
 use colored::*;
 
 pub mod control;
@@ -14,6 +14,7 @@ pub struct System {
     pub state: State,
     pub mem: Memory,
     pub ctrl: Control,
+    code: u32,
 }
 
 impl System {
@@ -22,6 +23,7 @@ impl System {
             state: State::new(),
             mem: Memory::new(mem_size),
             ctrl: Control::new(),
+            code: 0,
         }
     }
 
@@ -50,8 +52,7 @@ impl System {
         self.ctrl.privilege = MPriv::M;
         // Trap information
         self.ctrl.mepc = self.pc();
-        self.ctrl.mcause = trap;
-        self.ctrl.mtval = 0;
+        self.ctrl.mtrap = trap;
         // Jump to trap vector
         *self.pc_mut() = match self.ctrl.mtvec_mode {
             MTvecMode::Direct => self.ctrl.mtvec_base,
@@ -76,16 +77,20 @@ impl System {
         // Fetch
         let pc = self.pc();
         let code: u32 = self.mem.fetch(pc)?;
+        self.code = code;
 
         // Decode
-        let instr = decode(code).ok_or(Exception::IllegalInstr)?;
+        let instr = decode(code).ok_or(Trap {
+            cause: TrapCause::Exception(Exception::IllegalInstr),
+            val: code,
+        })?;
         println!("{:8x} {:?}", pc, instr);
 
         // Execute
         execute(self, &instr)
     }
 
-    fn retire(&mut self, res: &Result) {
+    fn retire(&mut self, res: Result) {
         match res {
             Ok(_) => {
                 // Count the number of retired instruction if Ok
@@ -93,9 +98,9 @@ impl System {
                     self.ctrl.minstret = self.ctrl.minstret.wrapping_add(1)
                 }
             }
-            Err(e) => {
+            Err(trap) => {
                 // Handle the trap if there's an exception
-                self.push_trap_m(Trap::Exception(*e));
+                self.push_trap_m(trap);
             }
         }
         // Count the number of cycles passed
@@ -112,8 +117,12 @@ impl System {
         }
 
         // Retire
-        self.retire(&res);
+        self.retire(res);
 
         res
     }
+}
+
+pub fn make_illegal(sys: &System) -> Trap {
+    Trap::from_exception(Exception::IllegalInstr, sys.code)
 }

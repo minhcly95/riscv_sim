@@ -17,7 +17,10 @@ pub fn execute_store(sys: &mut System, rs1: &Reg, rs2: &Reg, imm: i32, f: &Store
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Exception::{self, *};
+    use crate::{
+        Exception::{self, *},
+        Trap,
+    };
 
     fn assert_store(sys: &mut System, rs1: u8, rs2: u8, imm: i32, f: StoreFunct, expect: &[u8]) {
         let rs1 = Reg::new(rs1);
@@ -37,8 +40,9 @@ mod tests {
         f: StoreFunct,
         ex: Exception,
     ) {
+        let addr = (sys.reg(&Reg::new(rs1)) + imm) as u32;
         let res = execute_store(sys, &Reg::new(rs1), &Reg::new(rs2), imm, &f);
-        assert_eq!(res, Err(ex));
+        assert_eq!(res, Err(Trap::from_exception(ex, addr)));
     }
 
     #[test]

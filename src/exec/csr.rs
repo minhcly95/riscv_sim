@@ -1,17 +1,14 @@
 pub mod machine;
 pub mod user;
 
-use super::{advance_pc, Result};
+use super::advance_pc;
 use crate::{
     instr::{csr::*, funct::*, reg::Reg},
-    sys::control::*,
-    Exception::{self, IllegalInstr},
-    System,
+    sys::{control::*, make_illegal},
+    Result, Result32, System,
 };
 use machine::*;
 use user::*;
-
-type Result32 = core::result::Result<u32, Exception>;
 
 pub fn execute_csr(sys: &mut System, rd: &Reg, src: &CsrSrc, csr: &CsrReg, f: &CsrFunct) -> Result {
     match f {
@@ -58,7 +55,7 @@ fn csr_read(sys: &mut System, csr: &CsrReg) -> Result32 {
             if sys.ctrl.privilege == MPriv::M {
                 csr_read_m(sys, m)
             } else {
-                Err(IllegalInstr)
+                Err(make_illegal(sys))
             }
         }
     }
@@ -72,7 +69,7 @@ fn csr_write(sys: &mut System, csr: &CsrReg, val: u32) -> Result {
             if sys.ctrl.privilege == MPriv::M {
                 csr_write_m(sys, m, val)
             } else {
-                Err(IllegalInstr)
+                Err(make_illegal(sys))
             }
         }
     }
@@ -111,6 +108,34 @@ mod tests {
         assert_csr_imm(&mut sys, 3, 0b00111, CsrReg::M(CsrRegM::MScratch), CsrFunct::Rs, 0x51290ce3);
         assert_csr_imm(&mut sys, 3, 0b11101, CsrReg::M(CsrRegM::MScratch), CsrFunct::Rc, 0x51290ce7);
         assert_csr_imm(&mut sys, 3, 0, CsrReg::M(CsrRegM::MScratch), CsrFunct::Rs, 0x51290ce2);
+
+        assert_eq!(sys.state.pc(), 8 * 4);
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn test_execute_csr_same_reg() {
+        // Test everything using only 1 register to check for data races (write must be after read)
+        let mut sys = System::new(0);
+        sys.ctrl.mscratch = 0x0e27d515;
+
+        *sys.state.reg_mut(&Reg::new(1)) = 0xbcfec832_u32 as i32;
+        assert_csr_reg(&mut sys, 1, 1, CsrReg::M(CsrRegM::MScratch), CsrFunct::Rw, 0x0e27d515);
+
+        *sys.state.reg_mut(&Reg::new(1)) = 0x51290ce3_u32 as i32;
+        assert_csr_reg(&mut sys, 1, 1, CsrReg::M(CsrRegM::MScratch), CsrFunct::Rs, 0xbcfec832);
+
+        *sys.state.reg_mut(&Reg::new(1)) = 0xbcfec832_u32 as i32;
+        assert_csr_reg(&mut sys, 1, 1, CsrReg::M(CsrRegM::MScratch), CsrFunct::Rc, 0xfdffccf3);
+
+        assert_csr_imm(&mut sys, 1, 0b10011, CsrReg::M(CsrRegM::MScratch), CsrFunct::Rw, 0x410104c1);
+
+        *sys.state.reg_mut(&Reg::new(1)) = 0x51290ce3_u32 as i32;
+        assert_csr_reg(&mut sys, 1, 1, CsrReg::M(CsrRegM::MScratch), CsrFunct::Rw, 0b10011);
+
+        assert_csr_imm(&mut sys, 1, 0b00111, CsrReg::M(CsrRegM::MScratch), CsrFunct::Rs, 0x51290ce3);
+        assert_csr_imm(&mut sys, 1, 0b11101, CsrReg::M(CsrRegM::MScratch), CsrFunct::Rc, 0x51290ce7);
+        assert_csr_imm(&mut sys, 1, 0, CsrReg::M(CsrRegM::MScratch), CsrFunct::Rs, 0x51290ce2);
 
         assert_eq!(sys.state.pc(), 8 * 4);
     }

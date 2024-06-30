@@ -27,7 +27,10 @@ fn sign_extend_16(imm: u16) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Exception::{self, *};
+    use crate::{
+        Exception::{self, *},
+        Trap,
+    };
 
     fn assert_load(sys: &mut System, rd: u8, rs1: u8, imm: i32, f: LoadFunct, expect: u32) {
         execute_load(sys, &Reg::new(rd), &Reg::new(rs1), imm, &f).unwrap();
@@ -42,8 +45,9 @@ mod tests {
         f: LoadFunct,
         ex: Exception,
     ) {
+        let addr = (sys.reg(&Reg::new(rs1)) + imm) as u32;
         let res = execute_load(sys, &Reg::new(rd), &Reg::new(rs1), imm, &f);
-        assert_eq!(res, Err(ex));
+        assert_eq!(res, Err(Trap::from_exception(ex, addr)));
     }
 
     #[test]

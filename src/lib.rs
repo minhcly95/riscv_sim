@@ -4,6 +4,7 @@ mod exception;
 mod exec;
 mod instr;
 mod sys;
+mod trap;
 
 pub use decode::decode;
 pub use env::Env;
@@ -16,3 +17,10 @@ pub use instr::{
     Instr,
 };
 pub use sys::System;
+pub use trap::Trap;
+
+pub type Result = core::result::Result<(), Trap>;
+
+type Result8 = core::result::Result<u8, Trap>;
+type Result16 = core::result::Result<u16, Trap>;
+type Result32 = core::result::Result<u32, Trap>;

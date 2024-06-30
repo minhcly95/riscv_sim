@@ -1,4 +1,4 @@
-use crate::Exception;
+use crate::{Exception, Trap};
 
 #[derive(Debug)]
 pub struct Control {
@@ -16,10 +16,8 @@ pub struct Control {
     pub mscratch: u32,
     // mepc: Exception PC
     pub mepc: u32,
-    // mcause: Trap cause
-    pub mcause: Trap,
-    // mtval: Trap value
-    pub mtval: u32,
+    // mcause & mtval: Trap cause and value
+    pub mtrap: Trap,
     // menvcfg: Environment configuration
     pub fiom: bool, // Fence IO implies memory
     // mcycle: Counter for clock cycles
@@ -44,11 +42,6 @@ pub enum MTvecMode {
     Vectored,
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum Trap {
-    Exception(Exception),
-}
-
 impl Control {
     pub fn new() -> Control {
         Control {
@@ -62,8 +55,7 @@ impl Control {
             mtvec_mode: MTvecMode::Direct,
             mscratch: 0,
             mepc: 0,
-            mcause: Trap::Exception(Exception::InstrAddrMisaligned),
-            mtval: 0,
+            mtrap: Trap::from_exception(Exception::InstrAddrMisaligned, 0),
             fiom: false,
             mcycle: 0,
             mcycle_en: false,
@@ -105,18 +97,6 @@ impl MTvecMode {
         match self {
             MTvecMode::Direct => 0b0,
             MTvecMode::Vectored => 0b1,
-        }
-    }
-}
-
-impl Trap {
-    pub fn from(code: u32) -> Option<Trap> {
-        Exception::from(code).map(Trap::Exception)
-    }
-
-    pub fn to_int(&self) -> u32 {
-        match self {
-            Trap::Exception(e) => e.to_int(),
         }
     }
 }

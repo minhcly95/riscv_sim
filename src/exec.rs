@@ -1,9 +1,7 @@
 use crate::{
     instr::{format::*, Instr},
-    Exception, System,
+    Result, System
 };
-
-pub type Result = core::result::Result<(), Exception>;
 
 mod atomic;
 mod auipc;

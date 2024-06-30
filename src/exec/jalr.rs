@@ -1,5 +1,5 @@
 use super::Result;
-use crate::{instr::reg::Reg, Exception, System};
+use crate::{instr::reg::Reg, Exception, System, Trap};
 
 pub fn execute_jalr(sys: &mut System, rd: &Reg, rs1: &Reg, imm: i32) -> Result {
     let pc = sys.pc();
@@ -7,7 +7,10 @@ pub fn execute_jalr(sys: &mut System, rd: &Reg, rs1: &Reg, imm: i32) -> Result {
     let rd = sys.reg_mut(rd);
     let pc_jump = (rs1.wrapping_add(imm) as u32) & 0xfffffffe;
     if pc_jump & 0b11 != 0 {
-        return Err(Exception::InstrAddrMisaligned);
+        return Err(Trap::from_exception(
+            Exception::InstrAddrMisaligned,
+            pc_jump,
+        ));
     }
     *rd = pc.wrapping_add(4) as i32;
     *sys.pc_mut() = pc_jump;
@@ -37,19 +40,31 @@ mod tests {
 
         assert_eq!(
             execute_jalr(&mut sys, &Reg::new(1), &Reg::new(2), 0x0),
-            Err(Exception::InstrAddrMisaligned)
+            Err(Trap::from_exception(
+                Exception::InstrAddrMisaligned,
+                0xbcfec832
+            ))
         );
         assert_eq!(
             execute_jalr(&mut sys, &Reg::new(1), &Reg::new(2), 0x1),
-            Err(Exception::InstrAddrMisaligned)
+            Err(Trap::from_exception(
+                Exception::InstrAddrMisaligned,
+                0xbcfec832
+            ))
         );
         assert_eq!(
             execute_jalr(&mut sys, &Reg::new(1), &Reg::new(2), 0x4),
-            Err(Exception::InstrAddrMisaligned)
+            Err(Trap::from_exception(
+                Exception::InstrAddrMisaligned,
+                0xbcfec836
+            ))
         );
         assert_eq!(
             execute_jalr(&mut sys, &Reg::new(1), &Reg::new(2), 0x5),
-            Err(Exception::InstrAddrMisaligned)
+            Err(Trap::from_exception(
+                Exception::InstrAddrMisaligned,
+                0xbcfec836
+            ))
         );
     }
 }

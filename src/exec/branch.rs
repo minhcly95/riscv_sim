@@ -1,5 +1,5 @@
 use super::Result;
-use crate::{instr::reg::Reg, BranchFunct, Exception, System};
+use crate::{instr::reg::Reg, BranchFunct, Exception, System, Trap};
 
 pub fn execute_branch(sys: &mut System, rs1: &Reg, rs2: &Reg, imm: i32, f: &BranchFunct) -> Result {
     let pc = sys.pc();
@@ -15,7 +15,10 @@ pub fn execute_branch(sys: &mut System, rs1: &Reg, rs2: &Reg, imm: i32, f: &Bran
     };
     let pc_next = pc.wrapping_add_signed(if branch_cond { imm } else { 4 });
     if pc_next & 0b11 != 0 {
-        return Err(Exception::InstrAddrMisaligned);
+        return Err(Trap::from_exception(
+            Exception::InstrAddrMisaligned,
+            pc_next,
+        ));
     }
     *sys.pc_mut() = pc_next;
     Ok(())
@@ -50,7 +53,10 @@ mod tests {
         sys.state.pc = pc_start;
         assert_eq!(
             execute_branch(sys, &Reg::new(rs1), &Reg::new(rs2), imm, &f),
-            Err(Exception::InstrAddrMisaligned)
+            Err(Trap::from_exception(
+                Exception::InstrAddrMisaligned,
+                pc_start.wrapping_add_signed(imm)
+            ))
         );
     }
 

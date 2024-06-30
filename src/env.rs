@@ -1,4 +1,4 @@
-use crate::{Exception, System};
+use crate::{trap::TrapCause, Exception, System, Trap};
 use colored::*;
 use std::{fs, io};
 
@@ -20,28 +20,32 @@ impl Env {
         Ok(())
     }
 
-    pub fn run_until_exception(&mut self) -> Exception {
+    pub fn run_until_trapped(&mut self) -> Trap {
         loop {
-            if let Err(ex) = self.sys.step() {
+            if let Err(trap) = self.sys.step() {
                 self.log_with_pc(&format!(
-                    "{} due to an exception: {}",
+                    "{} due to a trap: {}",
                     "Break".yellow(),
-                    format!("{:?}", ex).yellow()
+                    format!("{:?}", trap).yellow()
                 ));
-                return ex;
+                return trap;
             }
         }
     }
 
     pub fn run_until_ecall(&mut self) {
         loop {
-            if let Err(ex) = self.sys.step() {
+            if let Err(Trap {
+                cause: TrapCause::Exception(ex),
+                ..
+            }) = self.sys.step()
+            {
                 if ex == Exception::EcallFromM
                     || ex == Exception::EcallFromS
                     || ex == Exception::EcallFromU
                 {
                     self.log_with_pc(&format!(
-                        "{} due to an exception: {}",
+                        "{} due to an Ecall: {}",
                         "Break".yellow(),
                         format!("{:?}", ex).yellow()
                     ));
@@ -59,7 +63,11 @@ impl Env {
 
     pub fn run_for_or_until_ecall(&mut self, repeat: usize) -> Result<(), Exception> {
         for _ in 0..repeat {
-            if let Err(ex) = self.sys.step() {
+            if let Err(Trap {
+                cause: TrapCause::Exception(ex),
+                ..
+            }) = self.sys.step()
+            {
                 if ex == Exception::EcallFromM
                     || ex == Exception::EcallFromS
                     || ex == Exception::EcallFromU

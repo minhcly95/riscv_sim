@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use crate::Exception;
+use crate::{Exception::*, Result, Result16, Result32, Result8, Trap};
 
 pub struct Memory {
     buf: Vec<u8>,
@@ -42,32 +42,32 @@ impl Memory {
     }
 
     // Read
-    pub fn read_u8(&self, addr: u32) -> Result<u8, Exception> {
+    pub fn read_u8(&self, addr: u32) -> Result8 {
         let addr = addr as usize;
         if addr >= self.buf.len() {
-            Err(Exception::LoadAccessFault)
+            Err(Trap::from_exception(LoadAccessFault, addr as u32))
         } else {
             Ok(self.buf[addr])
         }
     }
 
-    pub fn read_u16(&self, addr: u32) -> Result<u16, Exception> {
+    pub fn read_u16(&self, addr: u32) -> Result16 {
         let addr = addr as usize;
         if addr >= self.buf.len() {
-            Err(Exception::LoadAccessFault)
+            Err(Trap::from_exception(LoadAccessFault, addr as u32))
         } else if addr & 0b1 != 0 {
-            Err(Exception::LoadAddrMisaligned)
+            Err(Trap::from_exception(LoadAddrMisaligned, addr as u32))
         } else {
             Ok(u16::from_le_bytes([self.buf[addr], self.buf[addr + 1]]))
         }
     }
 
-    pub fn read_u32(&self, addr: u32) -> Result<u32, Exception> {
+    pub fn read_u32(&self, addr: u32) -> Result32 {
         let addr = addr as usize;
         if addr >= self.buf.len() {
-            Err(Exception::LoadAccessFault)
+            Err(Trap::from_exception(LoadAccessFault, addr as u32))
         } else if addr & 0b11 != 0 {
-            Err(Exception::LoadAddrMisaligned)
+            Err(Trap::from_exception(LoadAddrMisaligned, addr as u32))
         } else {
             Ok(u32::from_le_bytes([
                 self.buf[addr],
@@ -79,10 +79,10 @@ impl Memory {
     }
 
     // Write (also clear reservation when needed)
-    pub fn write_u8(&mut self, addr: u32, val: u8) -> Result<(), Exception> {
+    pub fn write_u8(&mut self, addr: u32, val: u8) -> Result {
         let addr = addr as usize;
         if addr >= self.buf.len() {
-            Err(Exception::StoreAccessFault)
+            Err(Trap::from_exception(StoreAccessFault, addr as u32))
         } else {
             self.buf[addr] = val;
             self.clear_reservation_if_matched(addr as u32);
@@ -90,12 +90,12 @@ impl Memory {
         }
     }
 
-    pub fn write_u16(&mut self, addr: u32, val: u16) -> Result<(), Exception> {
+    pub fn write_u16(&mut self, addr: u32, val: u16) -> Result {
         let addr = addr as usize;
         if addr >= self.buf.len() {
-            Err(Exception::StoreAccessFault)
+            Err(Trap::from_exception(StoreAccessFault, addr as u32))
         } else if addr & 0b1 != 0 {
-            Err(Exception::StoreAddrMisaligned)
+            Err(Trap::from_exception(StoreAddrMisaligned, addr as u32))
         } else {
             let bytes = val.to_le_bytes();
             self.buf[addr] = bytes[0];
@@ -105,12 +105,12 @@ impl Memory {
         }
     }
 
-    pub fn write_u32(&mut self, addr: u32, val: u32) -> Result<(), Exception> {
+    pub fn write_u32(&mut self, addr: u32, val: u32) -> Result {
         let addr = addr as usize;
         if addr >= self.buf.len() {
-            Err(Exception::StoreAccessFault)
+            Err(Trap::from_exception(StoreAccessFault, addr as u32))
         } else if addr & 0b11 != 0 {
-            Err(Exception::StoreAddrMisaligned)
+            Err(Trap::from_exception(StoreAddrMisaligned, addr as u32))
         } else {
             let bytes = val.to_le_bytes();
             self.buf[addr] = bytes[0];
@@ -122,24 +122,24 @@ impl Memory {
         }
     }
 
-    pub fn check_write_u32(&mut self, addr: u32) -> Result<(), Exception> {
+    pub fn check_write_u32(&mut self, addr: u32) -> Result {
         let addr = addr as usize;
         if addr >= self.buf.len() {
-            Err(Exception::StoreAccessFault)
+            Err(Trap::from_exception(StoreAccessFault, addr as u32))
         } else if addr & 0b11 != 0 {
-            Err(Exception::StoreAddrMisaligned)
+            Err(Trap::from_exception(StoreAddrMisaligned, addr as u32))
         } else {
             Ok(())
         }
     }
 
     // Instruction fetch
-    pub fn fetch(&self, addr: u32) -> Result<u32, Exception> {
+    pub fn fetch(&self, addr: u32) -> Result32 {
         let addr = addr as usize;
         if addr >= self.buf.len() {
-            Err(Exception::InstrAccessFault)
+            Err(Trap::from_exception(InstrAccessFault, addr as u32))
         } else if addr & 0b11 != 0 {
-            Err(Exception::InstrAddrMisaligned)
+            Err(Trap::from_exception(InstrAddrMisaligned, addr as u32))
         } else {
             Ok(u32::from_le_bytes([
                 self.buf[addr],
@@ -181,11 +181,15 @@ impl Debug for Memory {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Exception;
     use rand::{self, Rng};
-    use Exception::*;
 
     const MEM_SIZE: u32 = 0x400;
     const MASK: u32 = 0xffff_fffc;
+
+    fn trap(ex: Exception, addr: u32) -> Trap {
+        Trap::from_exception(ex, addr)
+    }
 
     #[test]
     fn test_u8_write() {
@@ -260,90 +264,96 @@ mod tests {
     }
 
     #[test]
+    #[rustfmt::skip]
     fn test_read_fault() {
         let mem = Memory::new(MEM_SIZE as usize); // 1 kB
 
-        assert_eq!(mem.read_u8(MEM_SIZE), Err(LoadAccessFault));
-        assert_eq!(mem.read_u8(0xffff_ffff), Err(LoadAccessFault));
+        assert_eq!(mem.read_u8(MEM_SIZE).unwrap_err(), trap(LoadAccessFault, MEM_SIZE));
+        assert_eq!(mem.read_u8(0xffff_ffff).unwrap_err(), trap(LoadAccessFault, 0xffff_ffff));
 
-        assert_eq!(mem.read_u16(MEM_SIZE), Err(LoadAccessFault));
-        assert_eq!(mem.read_u16(0xffff_ffff), Err(LoadAccessFault));
+        assert_eq!(mem.read_u16(MEM_SIZE).unwrap_err(), trap(LoadAccessFault, MEM_SIZE));
+        assert_eq!(mem.read_u16(0xffff_ffff).unwrap_err(), trap(LoadAccessFault, 0xffff_ffff));
 
-        assert_eq!(mem.read_u32(MEM_SIZE), Err(LoadAccessFault));
-        assert_eq!(mem.read_u32(0xffff_ffff), Err(LoadAccessFault));
+        assert_eq!(mem.read_u32(MEM_SIZE).unwrap_err(), trap(LoadAccessFault, MEM_SIZE));
+        assert_eq!(mem.read_u32(0xffff_ffff).unwrap_err(), trap(LoadAccessFault, 0xffff_ffff));
     }
 
     #[test]
+    #[rustfmt::skip]
     fn test_read_misaligned() {
         let mem = Memory::new(MEM_SIZE as usize); // 1 kB
 
-        assert_eq!(mem.read_u16(1), Err(LoadAddrMisaligned));
-        assert_eq!(mem.read_u16(3), Err(LoadAddrMisaligned));
+        assert_eq!(mem.read_u16(1).unwrap_err(), trap(LoadAddrMisaligned, 1));
+        assert_eq!(mem.read_u16(3).unwrap_err(), trap(LoadAddrMisaligned, 3));
 
-        assert_eq!(mem.read_u16(MEM_SIZE + 1), Err(LoadAccessFault));
-        assert_eq!(mem.read_u16(MEM_SIZE + 3), Err(LoadAccessFault));
+        assert_eq!(mem.read_u16(MEM_SIZE + 1).unwrap_err(), trap(LoadAccessFault, MEM_SIZE + 1));
+        assert_eq!(mem.read_u16(MEM_SIZE + 3).unwrap_err(), trap(LoadAccessFault, MEM_SIZE + 3));
 
-        assert_eq!(mem.read_u32(1), Err(LoadAddrMisaligned));
-        assert_eq!(mem.read_u32(2), Err(LoadAddrMisaligned));
-        assert_eq!(mem.read_u32(3), Err(LoadAddrMisaligned));
+        assert_eq!(mem.read_u32(1).unwrap_err(), trap(LoadAddrMisaligned, 1));
+        assert_eq!(mem.read_u32(2).unwrap_err(), trap(LoadAddrMisaligned, 2));
+        assert_eq!(mem.read_u32(3).unwrap_err(), trap(LoadAddrMisaligned, 3));
 
-        assert_eq!(mem.read_u32(MEM_SIZE + 1), Err(LoadAccessFault));
-        assert_eq!(mem.read_u32(MEM_SIZE + 2), Err(LoadAccessFault));
-        assert_eq!(mem.read_u32(MEM_SIZE + 3), Err(LoadAccessFault));
+        assert_eq!(mem.read_u32(MEM_SIZE + 1).unwrap_err(), trap(LoadAccessFault, MEM_SIZE + 1));
+        assert_eq!(mem.read_u32(MEM_SIZE + 2).unwrap_err(), trap(LoadAccessFault, MEM_SIZE + 2));
+        assert_eq!(mem.read_u32(MEM_SIZE + 3).unwrap_err(), trap(LoadAccessFault, MEM_SIZE + 3));
     }
 
     #[test]
+    #[rustfmt::skip]
     fn test_write_fault() {
         let mut mem = Memory::new(MEM_SIZE as usize); // 1 kB
 
-        assert_eq!(mem.write_u8(MEM_SIZE, 0), Err(StoreAccessFault));
-        assert_eq!(mem.write_u8(0xffff_ffff, 0), Err(StoreAccessFault));
+        assert_eq!(mem.write_u8(MEM_SIZE, 0).unwrap_err(), trap(StoreAccessFault, MEM_SIZE));
+        assert_eq!(mem.write_u8(0xffff_ffff, 0).unwrap_err(), trap(StoreAccessFault, 0xffff_ffff));
 
-        assert_eq!(mem.write_u16(MEM_SIZE, 0), Err(StoreAccessFault));
-        assert_eq!(mem.write_u16(0xffff_ffff, 0), Err(StoreAccessFault));
+        assert_eq!(mem.write_u16(MEM_SIZE, 0).unwrap_err(), trap(StoreAccessFault, MEM_SIZE));
+        assert_eq!(mem.write_u16(0xffff_ffff, 0).unwrap_err(), trap(StoreAccessFault, 0xffff_ffff));
 
-        assert_eq!(mem.write_u32(MEM_SIZE, 0), Err(StoreAccessFault));
-        assert_eq!(mem.write_u32(0xffff_ffff, 0), Err(StoreAccessFault));
+        assert_eq!(mem.write_u32(MEM_SIZE, 0).unwrap_err(), trap(StoreAccessFault, MEM_SIZE));
+        assert_eq!(mem.write_u32(0xffff_ffff, 0).unwrap_err(), trap(StoreAccessFault, 0xffff_ffff));
     }
 
     #[test]
+    #[rustfmt::skip]
     fn test_write_misaligned() {
         let mut mem = Memory::new(MEM_SIZE as usize); // 1 kB
 
-        assert_eq!(mem.write_u16(1, 0), Err(StoreAddrMisaligned));
-        assert_eq!(mem.write_u16(3, 0), Err(StoreAddrMisaligned));
+        assert_eq!(mem.write_u16(1, 0).unwrap_err(), trap(StoreAddrMisaligned, 1));
+        assert_eq!(mem.write_u16(3, 0).unwrap_err(), trap(StoreAddrMisaligned, 3));
 
-        assert_eq!(mem.write_u16(MEM_SIZE + 1, 0), Err(StoreAccessFault));
-        assert_eq!(mem.write_u16(MEM_SIZE + 3, 0), Err(StoreAccessFault));
+        assert_eq!(mem.write_u16(MEM_SIZE + 1, 0).unwrap_err(), trap(StoreAccessFault, MEM_SIZE + 1));
+        assert_eq!(mem.write_u16(MEM_SIZE + 3, 0).unwrap_err(), trap(StoreAccessFault, MEM_SIZE + 3));
 
-        assert_eq!(mem.write_u32(1, 0), Err(StoreAddrMisaligned));
-        assert_eq!(mem.write_u32(2, 0), Err(StoreAddrMisaligned));
-        assert_eq!(mem.write_u32(3, 0), Err(StoreAddrMisaligned));
+        assert_eq!(mem.write_u32(1, 0).unwrap_err(), trap(StoreAddrMisaligned, 1));
+        assert_eq!(mem.write_u32(2, 0).unwrap_err(), trap(StoreAddrMisaligned, 2));
+        assert_eq!(mem.write_u32(3, 0).unwrap_err(), trap(StoreAddrMisaligned, 3));
 
-        assert_eq!(mem.write_u32(MEM_SIZE + 1, 0), Err(StoreAccessFault));
-        assert_eq!(mem.write_u32(MEM_SIZE + 2, 0), Err(StoreAccessFault));
-        assert_eq!(mem.write_u32(MEM_SIZE + 3, 0), Err(StoreAccessFault));
+        assert_eq!(mem.write_u32(MEM_SIZE + 1, 0).unwrap_err(), trap(StoreAccessFault, MEM_SIZE + 1));
+        assert_eq!(mem.write_u32(MEM_SIZE + 2, 0).unwrap_err(), trap(StoreAccessFault, MEM_SIZE + 2));
+        assert_eq!(mem.write_u32(MEM_SIZE + 3, 0).unwrap_err(), trap(StoreAccessFault, MEM_SIZE + 3));
     }
 
     #[test]
+    #[rustfmt::skip]
     fn test_exec_fault() {
         let mem = Memory::new(MEM_SIZE as usize); // 1 kB
 
-        assert_eq!(mem.fetch(MEM_SIZE), Err(InstrAccessFault));
-        assert_eq!(mem.fetch(0xffff_ffff), Err(InstrAccessFault));
+        assert_eq!(mem.fetch(MEM_SIZE).unwrap_err(), trap(InstrAccessFault, MEM_SIZE));
+        assert_eq!(mem.fetch(0xffff_ffff).unwrap_err(), trap(InstrAccessFault, 0xffff_ffff));
     }
 
     #[test]
+    #[rustfmt::skip]
     fn test_exec_misaligned() {
         let mem = Memory::new(MEM_SIZE as usize); // 1 kB
 
-        assert_eq!(mem.fetch(1), Err(InstrAddrMisaligned));
-        assert_eq!(mem.fetch(2), Err(InstrAddrMisaligned));
-        assert_eq!(mem.fetch(3), Err(InstrAddrMisaligned));
+        assert_eq!(mem.fetch(1).unwrap_err(), trap(InstrAddrMisaligned, 1));
+        assert_eq!(mem.fetch(2).unwrap_err(), trap(InstrAddrMisaligned, 2));
+        assert_eq!(mem.fetch(3).unwrap_err(), trap(InstrAddrMisaligned, 3));
 
-        assert_eq!(mem.fetch(MEM_SIZE + 1), Err(InstrAccessFault));
-        assert_eq!(mem.fetch(MEM_SIZE + 2), Err(InstrAccessFault));
-        assert_eq!(mem.fetch(MEM_SIZE + 3), Err(InstrAccessFault));
+        assert_eq!(mem.fetch(MEM_SIZE + 1).unwrap_err(), trap(InstrAccessFault, MEM_SIZE + 1));
+        assert_eq!(mem.fetch(MEM_SIZE + 2).unwrap_err(), trap(InstrAccessFault, MEM_SIZE + 2));
+        assert_eq!(mem.fetch(MEM_SIZE + 3).unwrap_err(), trap(InstrAccessFault, MEM_SIZE + 3));
     }
 
     fn assert_word_reserved(mem: &Memory, addr: u32, expect: bool) {
