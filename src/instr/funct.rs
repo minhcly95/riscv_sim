@@ -111,8 +111,10 @@ pub enum AmoFunct {
 pub enum EnvFunct {
     Call,
     Break,
+    Sret,
     Mret,
     Wfi,
+    SfenceVma,
 }
 
 #[derive(Debug, PartialEq, Eq)]

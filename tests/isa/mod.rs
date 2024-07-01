@@ -17,3 +17,4 @@ mod rv32ui;
 mod rv32um;
 mod rv32ua;
 mod rv32mi;
+mod rv32si;

@@ -1,6 +1,7 @@
 #[derive(Debug, PartialEq, Eq)]
 pub enum CsrReg {
     U(CsrRegU),
+    S(CsrRegS),
     M(CsrRegM),
 }
 
@@ -11,8 +12,28 @@ pub enum CsrRegU {
     InstRet,
     HpmCounter(u8),
     Cycleh,
+    Timeh,
     InstReth,
     HpmCounterh(u8),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum CsrRegS {
+    // Supervisor trap setup
+    SStatus,
+    SIe,
+    STvec,
+    SCounterEn,
+    // Supervisor configuration
+    SEnvCfg,
+    // Supervisor trap handling
+    SScratch,
+    SEpc,
+    SCause,
+    STval,
+    SIp,
+    // Supervisor protection and translation
+    SAtp,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -68,8 +89,24 @@ impl CsrReg {
             0xc02 => Some(Self::U(CsrRegU::InstRet)),
             i @ 0xc03..=0xc1f => Some(Self::U(CsrRegU::HpmCounter((i - 0xc00) as u8))),
             0xc80 => Some(Self::U(CsrRegU::Cycleh)),
+            0xc81 => Some(Self::U(CsrRegU::Timeh)),
             0xc82 => Some(Self::U(CsrRegU::InstReth)),
             i @ 0xc83..=0xc9f => Some(Self::U(CsrRegU::HpmCounterh((i - 0xc80) as u8))),
+            // Supervisor trap setup
+            0x100 => Some(Self::S(CsrRegS::SStatus)),
+            0x104 => Some(Self::S(CsrRegS::SIe)),
+            0x105 => Some(Self::S(CsrRegS::STvec)),
+            0x106 => Some(Self::S(CsrRegS::SCounterEn)),
+            // Supervisor configuration
+            0x10a => Some(Self::S(CsrRegS::SEnvCfg)),
+            // Supervisor trap handling
+            0x140 => Some(Self::S(CsrRegS::SScratch)),
+            0x141 => Some(Self::S(CsrRegS::SEpc)),
+            0x142 => Some(Self::S(CsrRegS::SCause)),
+            0x143 => Some(Self::S(CsrRegS::STval)),
+            0x144 => Some(Self::S(CsrRegS::SIp)),
+            // Supervisor protection and translation
+            0x180 => Some(Self::S(CsrRegS::SAtp)),
             // Machine information
             0xf11 => Some(Self::M(CsrRegM::MVendorId)),
             0xf12 => Some(Self::M(CsrRegM::MArchId)),

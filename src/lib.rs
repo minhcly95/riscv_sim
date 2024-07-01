@@ -1,23 +1,15 @@
-mod decode;
-mod env;
-mod exception;
-mod exec;
-mod instr;
-mod sys;
-mod trap;
+pub mod decode;
+pub mod env;
+pub mod exec;
+pub mod instr;
+pub mod interrupt;
+pub mod sys;
+pub mod trap;
 
-pub use decode::decode;
 pub use env::Env;
-pub use exception::Exception;
-pub use exec::execute;
-pub use instr::{
-    format::{BType, IType, JType, RType, SType, UType},
-    funct::{BranchFunct, LoadFunct, OpFunct, OpImmFunct, StoreFunct},
-    reg::Reg,
-    Instr,
-};
+pub use instr::{reg::Reg, Instr};
 pub use sys::System;
-pub use trap::Trap;
+pub use trap::{Exception, Interrupt, Trap};
 
 pub type Result = core::result::Result<(), Trap>;
 

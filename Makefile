@@ -10,6 +10,7 @@ ISA += $(shell cat isa/rv32ui.txt)
 ISA += $(shell cat isa/rv32um.txt)
 ISA += $(shell cat isa/rv32ua.txt)
 ISA += $(shell cat isa/rv32mi.txt)
+ISA += $(shell cat isa/rv32si.txt)
 ISA_DIR = target/isa
 ISA_BIN = $(addprefix $(ISA_DIR)/,$(addsuffix .bin,$(ISA)))
 

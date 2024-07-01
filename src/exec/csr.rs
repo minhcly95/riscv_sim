@@ -1,4 +1,5 @@
 pub mod machine;
+pub mod supervisor;
 pub mod user;
 
 use super::advance_pc;
@@ -8,6 +9,7 @@ use crate::{
     Result, Result32, System,
 };
 use machine::*;
+use supervisor::*;
 use user::*;
 
 pub fn execute_csr(sys: &mut System, rd: &Reg, src: &CsrSrc, csr: &CsrReg, f: &CsrFunct) -> Result {
@@ -50,6 +52,14 @@ fn get_src(sys: &System, src: &CsrSrc) -> u32 {
 fn csr_read(sys: &mut System, csr: &CsrReg) -> Result32 {
     match csr {
         CsrReg::U(u) => csr_read_u(sys, u),
+        CsrReg::S(s) => {
+            // Must not be in U-mode to access
+            if sys.ctrl.privilege != MPriv::U {
+                csr_read_s(sys, s)
+            } else {
+                Err(make_illegal(sys))
+            }
+        }
         CsrReg::M(m) => {
             // Must be in M-mode to access
             if sys.ctrl.privilege == MPriv::M {
@@ -64,6 +74,14 @@ fn csr_read(sys: &mut System, csr: &CsrReg) -> Result32 {
 fn csr_write(sys: &mut System, csr: &CsrReg, val: u32) -> Result {
     match csr {
         CsrReg::U(u) => csr_write_u(sys, u, val),
+        CsrReg::S(s) => {
+            // Must not be in U-mode to access
+            if sys.ctrl.privilege != MPriv::U {
+                csr_write_s(sys, s, val)
+            } else {
+                Err(make_illegal(sys))
+            }
+        }
         CsrReg::M(m) => {
             // Must be in M-mode to access
             if sys.ctrl.privilege == MPriv::M {

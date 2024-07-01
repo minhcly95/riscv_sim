@@ -1,4 +1,4 @@
-use crate::Reg;
+use crate::instr::reg::Reg;
 
 #[derive(Debug)]
 pub struct State {

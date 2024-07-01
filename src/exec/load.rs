@@ -1,5 +1,8 @@
 use super::{advance_pc, Result};
-use crate::{instr::reg::Reg, LoadFunct, System};
+use crate::{
+    instr::{funct::LoadFunct, reg::Reg},
+    System,
+};
 
 pub fn execute_load(sys: &mut System, rd: &Reg, rs1: &Reg, imm: i32, f: &LoadFunct) -> Result {
     let rs1 = sys.reg(rs1);

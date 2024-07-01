@@ -1,5 +1,8 @@
 use super::Result;
-use crate::{instr::reg::Reg, BranchFunct, Exception, System, Trap};
+use crate::{
+    instr::{funct::BranchFunct, reg::Reg},
+    Exception, System, Trap,
+};
 
 pub fn execute_branch(sys: &mut System, rs1: &Reg, rs2: &Reg, imm: i32, f: &BranchFunct) -> Result {
     let pc = sys.pc();

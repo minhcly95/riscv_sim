@@ -1,4 +1,7 @@
-use crate::{decode, execute, trap::TrapCause, Exception, Reg, Result, Trap};
+use crate::{
+    decode::decode, exec::execute, instr::reg::Reg, interrupt::check_interrupt, trap::TrapCause,
+    Exception, Result, Trap,
+};
 use colored::*;
 
 pub mod control;
@@ -54,10 +57,11 @@ impl System {
         self.ctrl.mepc = self.pc();
         self.ctrl.mtrap = trap;
         // Jump to trap vector
-        *self.pc_mut() = match self.ctrl.mtvec_mode {
-            MTvecMode::Direct => self.ctrl.mtvec_base,
-            MTvecMode::Vectored => self.ctrl.mtvec_base, // No interrupt exists
-        }
+        *self.pc_mut() = trap_vector_addr(
+            &self.ctrl.mtrap,
+            self.ctrl.mtvec_base,
+            &self.ctrl.mtvec_mode,
+        );
     }
 
     pub fn pop_trap_m(&mut self) {
@@ -73,51 +77,47 @@ impl System {
         self.mem.clear_reservation();
     }
 
-    fn fetch_decode_exec(&mut self) -> Result {
-        // Fetch
-        let pc = self.pc();
-        let code: u32 = self.mem.fetch(pc)?;
-        self.code = code;
-
-        // Decode
-        let instr = decode(code).ok_or(Trap {
-            cause: TrapCause::Exception(Exception::IllegalInstr),
-            val: code,
-        })?;
-        println!("{:8x} {:?}", pc, instr);
-
-        // Execute
-        execute(self, &instr)
+    pub fn push_trap_s(&mut self, trap: Trap) {
+        // Save previous status
+        self.ctrl.spie = self.ctrl.sie;
+        self.ctrl.spp =
+            SPriv::from_m(self.ctrl.privilege).expect("Cannot trap to S-mode from M-mode");
+        // Push new status
+        self.ctrl.sie = false;
+        self.ctrl.privilege = MPriv::S;
+        // Trap information
+        self.ctrl.sepc = self.pc();
+        self.ctrl.strap = trap;
+        // Jump to trap vector
+        *self.pc_mut() = trap_vector_addr(
+            &self.ctrl.strap,
+            self.ctrl.stvec_base,
+            &self.ctrl.stvec_mode,
+        );
     }
 
-    fn retire(&mut self, res: Result) {
-        match res {
-            Ok(_) => {
-                // Count the number of retired instruction if Ok
-                if !self.ctrl.minstret_inhibit {
-                    self.ctrl.minstret = self.ctrl.minstret.wrapping_add(1)
-                }
-            }
-            Err(trap) => {
-                // Handle the trap if there's an exception
-                self.push_trap_m(trap);
-            }
-        }
-        // Count the number of cycles passed
-        if !self.ctrl.mcycle_inhibit {
-            self.ctrl.mcycle = self.ctrl.mcycle.wrapping_add(1);
-        }
+    pub fn pop_trap_s(&mut self) {
+        // Restore previous status
+        self.ctrl.sie = self.ctrl.spie;
+        self.ctrl.privilege = MPriv::from_s(self.ctrl.spp);
+        // Push dummy status
+        self.ctrl.spie = true;
+        self.ctrl.spp = SPriv::U;
+        // Jump back to original PC
+        *self.pc_mut() = self.ctrl.sepc;
+        // Also clear LR reservation
+        self.mem.clear_reservation();
     }
 
     pub fn step(&mut self) -> Result {
         // Fetch decode exec
-        let res = self.fetch_decode_exec();
+        let res = fetch_decode_exec(self);
         if let Err(e) = res {
             println!("{:8x} {}", self.pc(), format!("{:?}", e).yellow());
         }
 
         // Retire
-        self.retire(res);
+        retire(self, res);
 
         res
     }
@@ -125,4 +125,79 @@ impl System {
 
 pub fn make_illegal(sys: &System) -> Trap {
     Trap::from_exception(Exception::IllegalInstr, sys.code)
+}
+
+fn fetch_decode_exec(sys: &mut System) -> Result {
+    // Check interrupt
+    check_interrupt(sys)?;
+
+    // Fetch
+    let pc = sys.pc();
+    let code: u32 = sys.mem.fetch(pc)?;
+    sys.code = code;
+
+    // Decode
+    let instr = decode(code).ok_or(Trap {
+        cause: TrapCause::Exception(Exception::IllegalInstr),
+        val: code,
+    })?;
+    println!("{:8x} {:?}", pc, instr);
+
+    // Execute
+    execute(sys, &instr)
+}
+
+fn retire(sys: &mut System, res: Result) {
+    match res {
+        Ok(_) => {
+            // Count the number of retired instruction if Ok
+            if !sys.ctrl.minstret_inhibit {
+                sys.ctrl.minstret = sys.ctrl.minstret.wrapping_add(1)
+            }
+        }
+        Err(trap) => {
+            // Handle the trap if there's an exception
+            handle_trap(sys, trap);
+        }
+    }
+    // Count the number of cycles passed
+    if !sys.ctrl.mcycle_inhibit {
+        sys.ctrl.mcycle = sys.ctrl.mcycle.wrapping_add(1);
+    }
+}
+
+fn handle_trap(sys: &mut System, trap: Trap) {
+    let Control {
+        privilege,
+        medeleg,
+        mideleg,
+        ..
+    } = &sys.ctrl;
+    // Determine the mode (M or S) to handle the trap
+    match trap.cause {
+        TrapCause::Exception(ex) => {
+            if *privilege == MPriv::M || !medeleg.get(&ex) {
+                sys.push_trap_m(trap);
+            } else {
+                sys.push_trap_s(trap);
+            }
+        }
+        TrapCause::Interrupt(int) => {
+            if *privilege == MPriv::M || !mideleg.get(&int) {
+                sys.push_trap_m(trap);
+            } else {
+                sys.push_trap_s(trap);
+            }
+        }
+    }
+}
+
+fn trap_vector_addr(trap: &Trap, base: u32, mode: &TvecMode) -> u32 {
+    match mode {
+        TvecMode::Direct => base,
+        TvecMode::Vectored => match trap.cause {
+            TrapCause::Exception(_) => base,
+            TrapCause::Interrupt(int) => base + (int.to_int() << 2),
+        },
+    }
 }

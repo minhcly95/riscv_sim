@@ -1,5 +1,8 @@
 use super::{advance_pc, Result};
-use crate::{instr::reg::Reg, StoreFunct, System};
+use crate::{
+    instr::{funct::StoreFunct, reg::Reg},
+    System,
+};
 
 pub fn execute_store(sys: &mut System, rs1: &Reg, rs2: &Reg, imm: i32, f: &StoreFunct) -> Result {
     let rs1 = sys.reg(rs1);

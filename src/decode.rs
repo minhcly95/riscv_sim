@@ -53,8 +53,10 @@ fn decode_system(code: u32) -> Option<Instr> {
             match imm {
                 0b0000000_00000 => Some(Instr::Env(EnvFunct::Call)),
                 0b0000000_00001 => Some(Instr::Env(EnvFunct::Break)),
+                0b0001000_00010 => Some(Instr::Env(EnvFunct::Sret)),
                 0b0011000_00010 => Some(Instr::Env(EnvFunct::Mret)),
                 0b0001000_00101 => Some(Instr::Env(EnvFunct::Wfi)),
+                0b0001001_00000..=0b0001001_11111 => Some(Instr::Env(EnvFunct::SfenceVma)),
                 _ => None,
             }
         }
