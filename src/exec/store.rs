@@ -1,17 +1,31 @@
 use super::{advance_pc, Result};
 use crate::{
     instr::{funct::StoreFunct, reg::Reg},
-    System,
+    translate::*,
+    System, Trap,
 };
 
 pub fn execute_store(sys: &mut System, rs1: &Reg, rs2: &Reg, imm: i32, f: &StoreFunct) -> Result {
     let rs1 = sys.reg(rs1);
     let rs2 = sys.reg(rs2);
-    let addr = (rs1 + imm) as u32;
+    let vaddr = rs1.wrapping_add(imm) as u32;
+    let make_trap = |ex| Trap::from_exception(ex, vaddr);
+    // Translate virtual address
+    let paddr = translate(sys, vaddr, AccessType::Store).map_err(make_trap)?;
+    // Store data with physical address
     match f {
-        StoreFunct::B => sys.mem.write_u8(addr, rs2 as u8)?,
-        StoreFunct::H => sys.mem.write_u16(addr, rs2 as u16)?,
-        StoreFunct::W => sys.mem.write_u32(addr, rs2 as u32)?,
+        StoreFunct::B => sys
+            .mem
+            .write_u8(paddr, rs2 as u8)
+            .map_err(make_trap)?,
+        StoreFunct::H => sys
+            .mem
+            .write_u16(paddr, rs2 as u16)
+            .map_err(make_trap)?,
+        StoreFunct::W => sys
+            .mem
+            .write_u32(paddr, rs2 as u32)
+            .map_err(make_trap)?,
     };
     advance_pc(sys);
     Ok(())
@@ -31,7 +45,7 @@ mod tests {
 
         let addr = (sys.state.reg(&rs1) + imm) as usize;
         for i in 0..expect.len() {
-            assert_eq!(sys.mem.as_u8()[addr + i], expect[i]);
+            assert_eq!(sys.mem.ram.as_u8()[addr + i], expect[i]);
         }
     }
 
@@ -61,7 +75,7 @@ mod tests {
         assert_store(&mut sys, 0, 3, 2, StoreFunct::B, &[0xfe]);
         assert_store(&mut sys, 0, 4, 3, StoreFunct::B, &[0xbc]);
 
-        assert_eq!(sys.mem.as_u32()[0], 0xbcfec832);
+        assert_eq!(sys.mem.ram.as_u32()[0], 0xbcfec832);
         assert_eq!(sys.state.pc(), 16);
     }
 
@@ -74,7 +88,7 @@ mod tests {
         assert_store(&mut sys, 0, 1, 0, StoreFunct::H, &[0xe3, 0x0c]);
         assert_store(&mut sys, 0, 2, 2, StoreFunct::H, &[0x29, 0x51]);
 
-        assert_eq!(sys.mem.as_u32()[0], 0x51290ce3);
+        assert_eq!(sys.mem.ram.as_u32()[0], 0x51290ce3);
         assert_eq!(sys.state.pc(), 8);
     }
 
@@ -87,8 +101,8 @@ mod tests {
         assert_store(&mut sys, 0, 1, 0, StoreFunct::W, &[0x32, 0xc8, 0xfe, 0xbc]);
         assert_store(&mut sys, 0, 2, 4, StoreFunct::W, &[0xe3, 0x0c, 0x29, 0x51]);
 
-        assert_eq!(sys.mem.as_u32()[0], 0xbcfec832);
-        assert_eq!(sys.mem.as_u32()[1], 0x51290ce3);
+        assert_eq!(sys.mem.ram.as_u32()[0], 0xbcfec832);
+        assert_eq!(sys.mem.ram.as_u32()[1], 0x51290ce3);
         assert_eq!(sys.state.pc(), 8);
     }
 

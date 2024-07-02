@@ -63,6 +63,9 @@ pub struct Control {
     pub strap: Trap,
     // senvcfg: Environment configuration
     pub sfiom: bool, // Fence IO implies memory
+    // satp: Address translation
+    pub satp_mode: SatpMode, // Translation mode
+    pub satp_ppn: u32,       // PPN of root page table
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -78,7 +81,7 @@ pub enum SPriv {
     S,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TvecMode {
     Direct,
     Vectored,
@@ -89,6 +92,12 @@ pub struct InterruptMap(pub u32);
 
 #[derive(Debug)]
 pub struct ExceptionMap(pub u32);
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum SatpMode {
+    Bare,
+    Sv32,
+}
 
 impl Control {
     pub fn new() -> Control {
@@ -132,6 +141,8 @@ impl Control {
             sepc: 0,
             strap: Trap::from_exception(Exception::InstrAddrMisaligned, 0),
             sfiom: false,
+            satp_mode: SatpMode::Bare,
+            satp_ppn: 0,
         }
     }
 }
@@ -235,5 +246,22 @@ impl ExceptionMap {
         let mask = 1 << ex.to_int();
         self.0 &= !mask;
         self.0 |= mask & (val as u32);
+    }
+}
+
+impl SatpMode {
+    pub fn from(code: u32) -> Option<SatpMode> {
+        match code {
+            0b0 => Some(SatpMode::Bare),
+            0b1 => Some(SatpMode::Sv32),
+            _ => None,
+        }
+    }
+
+    pub fn to_int(&self) -> u32 {
+        match self {
+            SatpMode::Bare => 0b0,
+            SatpMode::Sv32 => 0b1,
+        }
     }
 }

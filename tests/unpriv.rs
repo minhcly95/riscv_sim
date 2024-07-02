@@ -16,7 +16,7 @@ fn test_with_ref(binary_file: &str, ref_file: &str, num_words: usize, is_hex: bo
         .collect();
 
     // Data in mem starts from 0x1000 in bytes, which is 0x400 in words
-    let mem_dat = &env.sys.mem.as_u32()[0x400..(0x400 + num_words)];
+    let mem_dat = &env.sys.mem.ram.as_u32()[0x400..(0x400 + num_words)];
 
     assert_eq!(ref_dat, mem_dat);
 }

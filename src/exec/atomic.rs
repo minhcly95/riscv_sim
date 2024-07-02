@@ -1,8 +1,8 @@
 use super::{advance_pc, Result};
 use crate::{
     instr::{funct::*, reg::Reg},
-    trap::TrapCause,
-    Exception, System,
+    translate::*,
+    Exception, System, Trap,
 };
 use core::panic;
 
@@ -17,23 +17,31 @@ pub fn execute_atomic(sys: &mut System, rd: &Reg, rs1: &Reg, rs2: &Reg, f: &Atom
 }
 
 fn load_reserved(sys: &mut System, rd: &Reg, rs1: &Reg) -> Result {
-    let addr = sys.reg(rs1) as u32;
-    let data = sys.mem.read_u32(addr)? as i32;
-    sys.mem.reserve(addr);
+    let vaddr = sys.reg(rs1) as u32;
+    let make_trap = |ex| Trap::from_exception(ex, vaddr);
+    // Translate virtual address
+    let paddr = translate(sys, vaddr, AccessType::Load).map_err(make_trap)?;
+    // Load and reserve data with physical address
+    let data = sys.mem.read_u32(paddr).map_err(make_trap)? as i32;
+    sys.mem.reserve(paddr);
     *sys.reg_mut(rd) = data;
     Ok(())
 }
 
 fn store_conditional(sys: &mut System, rd: &Reg, rs1: &Reg, rs2: &Reg) -> Result {
-    let addr = sys.reg(rs1) as u32;
-    if sys.mem.is_reserved(addr) {
+    let vaddr = sys.reg(rs1) as u32;
+    let make_trap = |ex| Trap::from_exception(ex, vaddr);
+    // Translate virtual address
+    let paddr = translate(sys, vaddr, AccessType::Store).map_err(make_trap)?;
+    // Check and store data with physical address
+    if sys.mem.is_reserved(paddr) {
         // Only write when reservation is still valid
         let data = sys.reg(rs2);
-        sys.mem.write_u32(addr, data as u32)?;
+        sys.mem.write_u32(paddr, data as u32).map_err(make_trap)?;
         *sys.reg_mut(rd) = 0;
     } else {
         // Still generate exceptions for faulty accesses
-        sys.mem.check_write_u32(addr)?;
+        sys.mem.check_write_u32(paddr).map_err(make_trap)?;
         *sys.reg_mut(rd) = 1;
     }
     // Invalidate any reservation
@@ -43,24 +51,25 @@ fn store_conditional(sys: &mut System, rd: &Reg, rs1: &Reg, rs2: &Reg) -> Result
 
 fn execute_amo(sys: &mut System, rd: &Reg, rs1: &Reg, rs2: &Reg, f: &AmoFunct) -> Result {
     // Always read rs1 and rs2 before writing rd
-    let addr = sys.reg(rs1) as u32;
     let rs2 = sys.reg(rs2);
+    let vaddr = sys.reg(rs1) as u32;
+    let make_trap = |ex| Trap::from_exception(ex, vaddr);
+    // Translate virtual address
+    let paddr = translate(sys, vaddr, AccessType::Store).map_err(make_trap)?;
 
-    // Read the data and store in rd
-    let data = sys.mem.read_u32(addr).map_err(|mut t| {
-        // An exception raised from an AMO counts as a store exception
-        t.cause = match t.cause {
-            TrapCause::Exception(Exception::LoadAccessFault) => {
-                TrapCause::Exception(Exception::StoreAccessFault)
+    // Read the data
+    let data = sys
+        .mem
+        .read_u32(paddr)
+        .map_err(|ex| {
+            // An exception raised from an AMO counts as a store exception
+            match ex {
+                Exception::LoadAddrMisaligned => Exception::StoreAddrMisaligned,
+                Exception::LoadAccessFault => Exception::StoreAccessFault,
+                _ => panic!("Unexpected exception when calling Memory::read_u32"),
             }
-            TrapCause::Exception(Exception::LoadAddrMisaligned) => {
-                TrapCause::Exception(Exception::StoreAddrMisaligned)
-            }
-            _ => panic!("Unexpected exception when calling Memory::read_u32"),
-        };
-        t
-    })? as i32;
-    *sys.reg_mut(rd) = data;
+        })
+        .map_err(make_trap)? as i32;
 
     // Modify the data as store back at addr
     let new_data: i32;
@@ -75,8 +84,11 @@ fn execute_amo(sys: &mut System, rd: &Reg, rs1: &Reg, rs2: &Reg, f: &AmoFunct) -
         AmoFunct::Minu => new_data = (data as u32).min(rs2 as u32) as i32,
         AmoFunct::Maxu => new_data = (data as u32).max(rs2 as u32) as i32,
     }
-    println!("{:08x} {:08x} {:08x}", data, rs2, new_data);
-    sys.mem.write_u32(addr, new_data as u32)
+    sys.mem.write_u32(paddr, new_data as u32).map_err(make_trap)?;
+
+    // Store original data to rd
+    *sys.reg_mut(rd) = data;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -85,8 +97,8 @@ mod tests {
     use crate::{exec::store::execute_store, Trap};
     use Exception::*;
 
-    const TEST_ADDR: u32 = 0x4;
-    const OTHER_ADDR: u32 = 0x8;
+    const TEST_ADDR: u64 = 0x4;
+    const OTHER_ADDR: u64 = 0x8;
 
     fn load_reserved(sys: &mut System, rd: u8, rs1: u8) -> Result {
         execute_atomic(
@@ -142,7 +154,7 @@ mod tests {
         .unwrap();
         assert_eq!(sys.reg(&Reg::new(rd)), expect_rd as i32);
         assert_eq!(
-            sys.mem.read_u32(sys.reg(&Reg::new(rs1)) as u32).unwrap(),
+            sys.mem.read_u32(sys.reg(&Reg::new(rs1)) as u64).unwrap(),
             expect_mem
         );
     }

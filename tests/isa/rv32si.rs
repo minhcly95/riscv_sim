@@ -4,10 +4,10 @@ use super::*;
 fn csr() {
     run_test("target/isa/rv32si-p-csr.bin");
 }
-// #[test]
-// fn dirty() {
-//     run_test("target/isa/rv32si-p-dirty.bin");
-// }
+#[test]
+fn dirty() {
+    run_test("target/isa/rv32si-p-dirty.bin");
+}
 #[test]
 fn ma_fetch() {
     run_test("target/isa/rv32si-p-ma_fetch.bin");

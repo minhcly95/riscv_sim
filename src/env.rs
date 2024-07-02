@@ -16,7 +16,7 @@ impl Env {
         let image = fs::read(file_name)?;
         let len = image.len();
         self.log_with_pc(&format!("{} with {len} bytes", "Load image".blue()));
-        self.sys.mem.as_u8_mut()[0..len].copy_from_slice(&image);
+        self.sys.mem.ram.as_u8_mut()[0..len].copy_from_slice(&image);
         Ok(())
     }
 

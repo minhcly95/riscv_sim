@@ -185,12 +185,14 @@ fn read_satp(sys: &System) -> Result32 {
     if sys.ctrl.tvm {
         Err(make_illegal(sys))?
     }
-    Ok(0)
+    Ok((sys.ctrl.satp_mode.to_int() << 31) | (sys.ctrl.satp_ppn & 0x3fffff))
 }
 
-fn write_satp(sys: &mut System, _val: u32) -> Result {
+fn write_satp(sys: &mut System, val: u32) -> Result {
     if sys.ctrl.tvm {
         Err(make_illegal(sys))?
     }
+    sys.ctrl.satp_mode = SatpMode::from(val >> 31).unwrap();
+    sys.ctrl.satp_ppn = val & 0x3fffff;
     Ok(())
 }

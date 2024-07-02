@@ -1,18 +1,23 @@
 use super::{advance_pc, Result};
 use crate::{
     instr::{funct::LoadFunct, reg::Reg},
-    System,
+    translate::*,
+    System, Trap,
 };
 
 pub fn execute_load(sys: &mut System, rd: &Reg, rs1: &Reg, imm: i32, f: &LoadFunct) -> Result {
     let rs1 = sys.reg(rs1);
-    let addr = (rs1 + imm) as u32;
+    let vaddr = rs1.wrapping_add(imm) as u32;
+    let make_trap = |ex| Trap::from_exception(ex, vaddr);
+    // Translate virtual address
+    let paddr = translate(sys, vaddr, AccessType::Load).map_err(make_trap)?;
+    // Load data with physical address
     let data = match f {
-        LoadFunct::B => sign_extend_8(sys.mem.read_u8(addr)?),
-        LoadFunct::Bu => sys.mem.read_u8(addr)? as i32,
-        LoadFunct::H => sign_extend_16(sys.mem.read_u16(addr)?),
-        LoadFunct::Hu => sys.mem.read_u16(addr)? as i32,
-        LoadFunct::W => sys.mem.read_u32(addr)? as i32,
+        LoadFunct::B => sign_extend_8(sys.mem.read_u8(paddr).map_err(make_trap)?),
+        LoadFunct::Bu => sys.mem.read_u8(paddr).map_err(make_trap)? as i32,
+        LoadFunct::H => sign_extend_16(sys.mem.read_u16(paddr).map_err(make_trap)?),
+        LoadFunct::Hu => sys.mem.read_u16(paddr).map_err(make_trap)? as i32,
+        LoadFunct::W => sys.mem.read_u32(paddr).map_err(make_trap)? as i32,
     };
     *sys.reg_mut(rd) = data;
     advance_pc(sys);

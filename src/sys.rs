@@ -1,21 +1,22 @@
 use crate::{
-    decode::decode, exec::execute, instr::reg::Reg, interrupt::check_interrupt, trap::TrapCause,
-    Exception, Result, Trap,
+    decode::decode, exec::execute, instr::reg::Reg, interrupt::check_interrupt, translate::*,
+    trap::TrapCause, Exception, Result, Result32, Trap,
 };
 use colored::*;
 
 pub mod control;
-pub mod mem;
+pub mod mem_map;
+pub mod ram;
 pub mod state;
 
 use control::*;
-use mem::*;
+use mem_map::*;
 use state::*;
 
 #[derive(Debug)]
 pub struct System {
     pub state: State,
-    pub mem: Memory,
+    pub mem: MemMap,
     pub ctrl: Control,
     code: u32,
 }
@@ -24,7 +25,7 @@ impl System {
     pub fn new(mem_size: usize) -> System {
         System {
             state: State::new(),
-            mem: Memory::new(mem_size),
+            mem: MemMap::new(mem_size),
             ctrl: Control::new(),
             code: 0,
         }
@@ -71,6 +72,10 @@ impl System {
         // Push dummy status
         self.ctrl.mpie = true;
         self.ctrl.mpp = MPriv::U;
+        // If move to a less privilege mode, clear MPRV
+        if self.ctrl.privilege != MPriv::M {
+            self.ctrl.mprv = false;
+        }
         // Jump back to original PC
         *self.pc_mut() = self.ctrl.mepc;
         // Also clear LR reservation
@@ -103,6 +108,8 @@ impl System {
         // Push dummy status
         self.ctrl.spie = true;
         self.ctrl.spp = SPriv::U;
+        // Clear MPRV (since SRET always change the privilege mode to either S or U)
+        self.ctrl.mprv = false;
         // Jump back to original PC
         *self.pc_mut() = self.ctrl.sepc;
         // Also clear LR reservation
@@ -132,8 +139,7 @@ fn fetch_decode_exec(sys: &mut System) -> Result {
     check_interrupt(sys)?;
 
     // Fetch
-    let pc = sys.pc();
-    let code: u32 = sys.mem.fetch(pc)?;
+    let code = fetch(sys)?;
     sys.code = code;
 
     // Decode
@@ -141,10 +147,18 @@ fn fetch_decode_exec(sys: &mut System) -> Result {
         cause: TrapCause::Exception(Exception::IllegalInstr),
         val: code,
     })?;
-    println!("{:8x} {:?}", pc, instr);
+    println!("{:8x} {:?}", sys.pc(), instr);
 
     // Execute
     execute(sys, &instr)
+}
+
+fn fetch(sys: &mut System) -> Result32 {
+    let vpc = sys.pc();
+    let make_trap = |ex| Trap::from_exception(ex, vpc);
+    let ppc = translate(sys, vpc, AccessType::Instr).map_err(make_trap)?;
+    let code: u32 = sys.mem.fetch(ppc).map_err(make_trap)?;
+    Ok(code)
 }
 
 fn retire(sys: &mut System, res: Result) {
