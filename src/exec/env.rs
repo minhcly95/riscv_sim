@@ -1,6 +1,7 @@
 use super::{advance_pc, Result};
 use crate::{
     instr::funct::EnvFunct,
+    proc::{pop_trap_m, pop_trap_s},
     sys::{control::MPriv, make_illegal},
     Exception, System, Trap,
 };
@@ -34,7 +35,7 @@ fn execute_sret(sys: &mut System) -> Result {
         Err(make_illegal(sys))?
     }
     // Do not advance_pc here
-    sys.pop_trap_s();
+    pop_trap_s(sys);
     Ok(())
 }
 
@@ -44,7 +45,7 @@ fn execute_mret(sys: &mut System) -> Result {
         Err(make_illegal(sys))?
     }
     // Do not advance_pc here
-    sys.pop_trap_m();
+    pop_trap_m(sys);
     Ok(())
 }
 

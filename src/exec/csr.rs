@@ -111,7 +111,7 @@ mod tests {
     #[rustfmt::skip]
     fn test_execute_csr() {
         // We use mscratch since it behaves like a normal register
-        let mut sys = System::new(0);
+        let mut sys = System::new();
         *sys.state.reg_mut(&Reg::new(1)) = 0xbcfec832_u32 as i32;
         *sys.state.reg_mut(&Reg::new(2)) = 0x51290ce3_u32 as i32;
         sys.ctrl.mscratch = 0x0e27d515;
@@ -134,7 +134,7 @@ mod tests {
     #[rustfmt::skip]
     fn test_execute_csr_same_reg() {
         // Test everything using only 1 register to check for data races (write must be after read)
-        let mut sys = System::new(0);
+        let mut sys = System::new();
         sys.ctrl.mscratch = 0x0e27d515;
 
         *sys.state.reg_mut(&Reg::new(1)) = 0xbcfec832_u32 as i32;

@@ -1,14 +1,18 @@
+pub mod config;
 pub mod decode;
-pub mod env;
 pub mod exec;
 pub mod instr;
-pub mod interrupt;
+pub mod proc;
+pub mod run;
 pub mod sys;
 pub mod translate;
 pub mod trap;
 
-pub use env::Env;
+pub use config::Config;
 pub use instr::{reg::Reg, Instr};
+pub use run::{
+    load_from_file, run_for, run_for_or_until_ecall, run_until_ecall, run_until_trapped,
+};
 pub use sys::System;
 pub use trap::{Exception, Interrupt, Trap};
 

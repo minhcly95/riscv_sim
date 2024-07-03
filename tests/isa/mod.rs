@@ -1,27 +1,35 @@
-use riscv_sim::{Env, Reg};
+use bytesize::ByteSize;
+use riscv_sim::*;
+use std::{path::PathBuf, str::FromStr};
 
 fn run_test(binary_file: &str) {
-    let mut env = Env::new();
-    env.load_from_file(binary_file).unwrap();
+    let cfg = Config {
+        binary: Some(PathBuf::from_str(binary_file).unwrap()),
+        size: ByteSize::mib(1),
+        base: 0,
+        verbose: true,
+    };
+
+    let mut sys = System::from_config(cfg); // 1MB
 
     // Modify base addr of RAM
-    env.sys.mem.ram_base = 0x8000_0000;
-    *env.sys.pc_mut() = 0x8000_0000;
+    sys.mem.ram_base = 0x8000_0000;
+    *sys.pc_mut() = 0x8000_0000;
 
-    if let Ok(()) = env.run_for_or_until_ecall(10000) {
-        println!("{:#?}", env.sys);
+    if let Ok(()) = run_for_or_until_ecall(&mut sys, 10000) {
+        println!("{:#?}", &sys);
         panic!("Timeout");
     }
 
-    let gp = env.sys.reg(&Reg::new(3)) >> 1;
+    let gp = sys.reg(&Reg::new(3)) >> 1;
     if gp != 0 {
-        println!("{:#?}", env.sys);
+        println!("{:#?}", sys);
         panic!("Test number {} failed", gp);
     }
 }
 
-mod rv32ui;
-mod rv32um;
-mod rv32ua;
 mod rv32mi;
 mod rv32si;
+mod rv32ua;
+mod rv32ui;
+mod rv32um;

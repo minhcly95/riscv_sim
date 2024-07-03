@@ -1,6 +1,8 @@
+use std::u64;
+
 use crate::{
-    decode::decode, exec::execute, instr::reg::Reg, interrupt::check_interrupt, translate::*,
-    trap::TrapCause, Exception, Result, Result32, Trap,
+    decode::decode, exec::execute, instr::reg::Reg, proc::*, run::load_from_file, translate::*,
+    trap::TrapCause, Config, Exception, Result, Result32, Trap,
 };
 use colored::*;
 
@@ -15,6 +17,7 @@ use state::*;
 
 #[derive(Debug)]
 pub struct System {
+    pub cfg: Config,
     pub state: State,
     pub mem: MemMap,
     pub ctrl: Control,
@@ -22,13 +25,29 @@ pub struct System {
 }
 
 impl System {
-    pub fn new(mem_size: usize) -> System {
-        System {
+    pub fn new() -> System {
+        Self::from_config(Config::new())
+    }
+
+    pub fn from_config(cfg: Config) -> System {
+        let size = cfg.size.as_u64() as usize;
+        let binary = cfg.binary.clone();
+
+        let mut sys = System {
+            cfg,
             state: State::new(),
-            mem: MemMap::new(mem_size),
+            mem: MemMap::new(size),
             ctrl: Control::new(),
             code: 0,
+        };
+
+        sys.mem.ram_base = sys.cfg.base as u64;
+        *sys.pc_mut() = sys.cfg.base;
+
+        if let Some(path) = binary {
+            load_from_file(&mut sys, path).unwrap();
         }
+        sys
     }
 
     pub fn reg(&self, r: &Reg) -> i32 {
@@ -47,80 +66,11 @@ impl System {
         self.state.pc_mut()
     }
 
-    pub fn push_trap_m(&mut self, trap: Trap) {
-        // Save previous status
-        self.ctrl.mpie = self.ctrl.mie;
-        self.ctrl.mpp = self.ctrl.privilege;
-        // Push new status
-        self.ctrl.mie = false;
-        self.ctrl.privilege = MPriv::M;
-        // Trap information
-        self.ctrl.mepc = self.pc();
-        self.ctrl.mtrap = trap;
-        // Jump to trap vector
-        *self.pc_mut() = trap_vector_addr(
-            &self.ctrl.mtrap,
-            self.ctrl.mtvec_base,
-            &self.ctrl.mtvec_mode,
-        );
-    }
-
-    pub fn pop_trap_m(&mut self) {
-        // Restore previous status
-        self.ctrl.mie = self.ctrl.mpie;
-        self.ctrl.privilege = self.ctrl.mpp;
-        // Push dummy status
-        self.ctrl.mpie = true;
-        self.ctrl.mpp = MPriv::U;
-        // If move to a less privilege mode, clear MPRV
-        if self.ctrl.privilege != MPriv::M {
-            self.ctrl.mprv = false;
-        }
-        // Jump back to original PC
-        *self.pc_mut() = self.ctrl.mepc;
-        // Also clear LR reservation
-        self.mem.clear_reservation();
-    }
-
-    pub fn push_trap_s(&mut self, trap: Trap) {
-        // Save previous status
-        self.ctrl.spie = self.ctrl.sie;
-        self.ctrl.spp =
-            SPriv::from_m(self.ctrl.privilege).expect("Cannot trap to S-mode from M-mode");
-        // Push new status
-        self.ctrl.sie = false;
-        self.ctrl.privilege = MPriv::S;
-        // Trap information
-        self.ctrl.sepc = self.pc();
-        self.ctrl.strap = trap;
-        // Jump to trap vector
-        *self.pc_mut() = trap_vector_addr(
-            &self.ctrl.strap,
-            self.ctrl.stvec_base,
-            &self.ctrl.stvec_mode,
-        );
-    }
-
-    pub fn pop_trap_s(&mut self) {
-        // Restore previous status
-        self.ctrl.sie = self.ctrl.spie;
-        self.ctrl.privilege = MPriv::from_s(self.ctrl.spp);
-        // Push dummy status
-        self.ctrl.spie = true;
-        self.ctrl.spp = SPriv::U;
-        // Clear MPRV (since SRET always change the privilege mode to either S or U)
-        self.ctrl.mprv = false;
-        // Jump back to original PC
-        *self.pc_mut() = self.ctrl.sepc;
-        // Also clear LR reservation
-        self.mem.clear_reservation();
-    }
-
     pub fn step(&mut self) -> Result {
         // Fetch decode exec
         let res = fetch_decode_exec(self);
         if let Err(e) = res {
-            println!("{:8x} {}", self.pc(), format!("{:?}", e).yellow());
+            log_with_pc(self, &format!("{}", format!("{:?}", e).yellow()), true);
         }
 
         // Retire
@@ -132,6 +82,12 @@ impl System {
 
 pub fn make_illegal(sys: &System) -> Trap {
     Trap::from_exception(Exception::IllegalInstr, sys.code)
+}
+
+pub fn log_with_pc(sys: &System, str: &str, debug: bool) {
+    if !debug || sys.cfg.verbose {
+        println!("{:8x} {str}", sys.pc());
+    }
 }
 
 fn fetch_decode_exec(sys: &mut System) -> Result {
@@ -147,13 +103,13 @@ fn fetch_decode_exec(sys: &mut System) -> Result {
         cause: TrapCause::Exception(Exception::IllegalInstr),
         val: code,
     })?;
-    println!("{:8x} {:?}", sys.pc(), instr);
+    log_with_pc(sys, &format!("{:?}", instr), true);
 
     // Execute
     execute(sys, &instr)
 }
 
-fn fetch(sys: &mut System) -> Result32 {
+pub fn fetch(sys: &mut System) -> Result32 {
     let vpc = sys.pc();
     let make_trap = |ex| Trap::from_exception(ex, vpc);
     let ppc = translate(sys, vpc, AccessType::Instr).map_err(make_trap)?;
@@ -177,41 +133,5 @@ fn retire(sys: &mut System, res: Result) {
     // Count the number of cycles passed
     if !sys.ctrl.mcycle_inhibit {
         sys.ctrl.mcycle = sys.ctrl.mcycle.wrapping_add(1);
-    }
-}
-
-fn handle_trap(sys: &mut System, trap: Trap) {
-    let Control {
-        privilege,
-        medeleg,
-        mideleg,
-        ..
-    } = &sys.ctrl;
-    // Determine the mode (M or S) to handle the trap
-    match trap.cause {
-        TrapCause::Exception(ex) => {
-            if *privilege == MPriv::M || !medeleg.get(&ex) {
-                sys.push_trap_m(trap);
-            } else {
-                sys.push_trap_s(trap);
-            }
-        }
-        TrapCause::Interrupt(int) => {
-            if *privilege == MPriv::M || !mideleg.get(&int) {
-                sys.push_trap_m(trap);
-            } else {
-                sys.push_trap_s(trap);
-            }
-        }
-    }
-}
-
-fn trap_vector_addr(trap: &Trap, base: u32, mode: &TvecMode) -> u32 {
-    match mode {
-        TvecMode::Direct => base,
-        TvecMode::Vectored => match trap.cause {
-            TrapCause::Exception(_) => base,
-            TrapCause::Interrupt(int) => base + (int.to_int() << 2),
-        },
     }
 }

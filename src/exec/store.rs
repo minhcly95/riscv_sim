@@ -64,7 +64,7 @@ mod tests {
 
     #[test]
     fn test_execute_load_byte() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
         *sys.reg_mut(&Reg::new(1)) = 0xbcfec832_u32 as i32;
         *sys.reg_mut(&Reg::new(2)) = 0x32bcfec8_u32 as i32;
         *sys.reg_mut(&Reg::new(3)) = 0xc832bcfe_u32 as i32;
@@ -81,7 +81,7 @@ mod tests {
 
     #[test]
     fn test_execute_store_halfword() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
         *sys.reg_mut(&Reg::new(1)) = 0x51290ce3_u32 as i32;
         *sys.reg_mut(&Reg::new(2)) = 0x0ce35129_u32 as i32;
 
@@ -94,7 +94,7 @@ mod tests {
 
     #[test]
     fn test_execute_store_word() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
         *sys.reg_mut(&Reg::new(1)) = 0xbcfec832_u32 as i32;
         *sys.reg_mut(&Reg::new(2)) = 0x51290ce3_u32 as i32;
 
@@ -108,21 +108,21 @@ mod tests {
 
     #[test]
     fn test_execute_store_fault() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
 
-        assert_store_failed(&mut sys, 0, 1, 16, StoreFunct::B, StoreAccessFault);
+        assert_store_failed(&mut sys, 0, 1, 0x100000, StoreFunct::B, StoreAccessFault);
         assert_store_failed(&mut sys, 0, 1, -4, StoreFunct::B, StoreAccessFault);
 
-        assert_store_failed(&mut sys, 0, 1, 16, StoreFunct::H, StoreAccessFault);
+        assert_store_failed(&mut sys, 0, 1, 0x100000, StoreFunct::H, StoreAccessFault);
         assert_store_failed(&mut sys, 0, 1, -4, StoreFunct::H, StoreAccessFault);
 
-        assert_store_failed(&mut sys, 0, 1, 16, StoreFunct::W, StoreAccessFault);
+        assert_store_failed(&mut sys, 0, 1, 0x100000, StoreFunct::W, StoreAccessFault);
         assert_store_failed(&mut sys, 0, 1, -4, StoreFunct::W, StoreAccessFault);
     }
 
     #[test]
     fn test_execute_store_misaligned_halfword() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
 
         assert_store_failed(&mut sys, 0, 1, 1, StoreFunct::H, StoreAddrMisaligned);
         assert_store_failed(&mut sys, 0, 1, 3, StoreFunct::H, StoreAddrMisaligned);
@@ -132,7 +132,7 @@ mod tests {
 
     #[test]
     fn test_execute_store_misaligned_word() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
 
         assert_store_failed(&mut sys, 0, 1, 1, StoreFunct::W, StoreAddrMisaligned);
         assert_store_failed(&mut sys, 0, 1, 2, StoreFunct::W, StoreAddrMisaligned);

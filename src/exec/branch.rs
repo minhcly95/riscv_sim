@@ -65,7 +65,7 @@ mod tests {
 
     #[test]
     fn test_execute_branch() {
-        let mut sys = System::new(0);
+        let mut sys = System::new();
         *sys.reg_mut(&Reg::new(1)) = 0xbcfec832_u32 as i32;
         *sys.reg_mut(&Reg::new(2)) = 0x51290ce3_u32 as i32;
         *sys.reg_mut(&Reg::new(4)) = 0xbcfec832_u32 as i32;
@@ -97,7 +97,7 @@ mod tests {
 
     #[test]
     fn test_execute_branch_misaligned() {
-        let mut sys = System::new(0);
+        let mut sys = System::new();
         *sys.reg_mut(&Reg::new(1)) = 0xbcfec832_u32 as i32;
         *sys.reg_mut(&Reg::new(2)) = 0x51290ce3_u32 as i32;
         *sys.reg_mut(&Reg::new(4)) = 0xbcfec832_u32 as i32;

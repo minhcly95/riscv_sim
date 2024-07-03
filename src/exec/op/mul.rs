@@ -39,7 +39,7 @@ mod tests {
 
     #[test]
     fn test_execute_op_mul() {
-        let mut sys = System::new(0);
+        let mut sys = System::new();
         *sys.state.reg_mut(&Reg::new(1)) = 0xbcfec832_u32 as i32;
         *sys.state.reg_mut(&Reg::new(2)) = 0x51290ce3_u32 as i32;
 
@@ -64,7 +64,7 @@ mod tests {
 
     #[test]
     fn test_execute_op_divrem() {
-        let mut sys = System::new(0);
+        let mut sys = System::new();
         *sys.state.reg_mut(&Reg::new(1)) = 0xbcfec832_u32 as i32;
         *sys.state.reg_mut(&Reg::new(2)) = 0xff290ce3_u32 as i32;
 
@@ -83,7 +83,7 @@ mod tests {
 
     #[test]
     fn test_execute_op_div_zero() {
-        let mut sys = System::new(0);
+        let mut sys = System::new();
         *sys.state.reg_mut(&Reg::new(1)) = 0xbcfec832_u32 as i32;
         *sys.state.reg_mut(&Reg::new(2)) = 0x51290ce3_u32 as i32;
 
@@ -102,7 +102,7 @@ mod tests {
 
     #[test]
     fn test_execute_op_div_overflow() {
-        let mut sys = System::new(0);
+        let mut sys = System::new();
         *sys.state.reg_mut(&Reg::new(1)) = 0x80000000_u32 as i32;
         *sys.state.reg_mut(&Reg::new(2)) = 0xffffffff_u32 as i32;
 

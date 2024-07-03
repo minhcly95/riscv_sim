@@ -1,10 +1,18 @@
-use riscv_sim::Env;
-use std::fs;
+use bytesize::ByteSize;
+use riscv_sim::*;
+use std::{fs, path::PathBuf, str::FromStr};
 
 fn test_with_ref(binary_file: &str, ref_file: &str, num_words: usize, is_hex: bool) {
-    let mut env = Env::new();
-    env.load_from_file(binary_file).unwrap();
-    if let Ok(()) = env.run_for_or_until_ecall(5000) {
+    let cfg = Config {
+        binary: Some(PathBuf::from_str(binary_file).unwrap()),
+        size: ByteSize::mib(1),
+        base: 0,
+        verbose: true,
+    };
+
+    let mut sys = System::from_config(cfg);
+
+    if let Ok(()) = run_for_or_until_ecall(&mut sys, 5000) {
         panic!("Timeout");
     }
 
@@ -16,7 +24,7 @@ fn test_with_ref(binary_file: &str, ref_file: &str, num_words: usize, is_hex: bo
         .collect();
 
     // Data in mem starts from 0x1000 in bytes, which is 0x400 in words
-    let mem_dat = &env.sys.mem.ram.as_u32()[0x400..(0x400 + num_words)];
+    let mem_dat = &sys.mem.ram.as_u32()[0x400..(0x400 + num_words)];
 
     assert_eq!(ref_dat, mem_dat);
 }

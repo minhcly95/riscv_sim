@@ -33,7 +33,7 @@ mod tests {
 
     #[test]
     fn test_execute_op_i() {
-        let mut sys = System::new(0);
+        let mut sys = System::new();
         *sys.state.reg_mut(&Reg::new(1)) = 0xbcfec832_u32 as i32;
         *sys.state.reg_mut(&Reg::new(2)) = 0x51290ce3_u32 as i32;
 

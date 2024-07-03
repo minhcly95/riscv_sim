@@ -1,13 +1,21 @@
-use riscv_sim::Env;
-use std::env;
+use clap::Parser;
+use config::ConfigError;
+use riscv_sim::*;
+use std::process;
 
 fn main() {
-    let mut args = env::args();
-    args.next();
-    let file_name = args.next().unwrap();
+    let cfg = Config::parse();
 
-    let mut env = Env::new();
-    env.load_from_file(&file_name).unwrap();
-    env.run_until_ecall();
-    println!("{:#?}", env.sys);
+    let cfg = match cfg.validate() {
+        Ok(c) => c,
+        Err(e) => match e {
+            ConfigError::InvalidBinary(f) => {
+                eprintln!("Invalid binary file: {}", f.display());
+                process::exit(1);
+            }
+        },
+    };
+
+    let mut sys = System::from_config(cfg);
+    run_until_ecall(&mut sys);
 }

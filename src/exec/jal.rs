@@ -22,7 +22,7 @@ mod tests {
 
     #[test]
     fn test_execute_jal() {
-        let mut sys = System::new(0);
+        let mut sys = System::new();
         sys.state.pc = 0xc496a1b4;
         execute_jal(&mut sys, &Reg::new(1), 0x109df8 as i32).unwrap();
         assert_eq!(sys.state.reg(&Reg::new(1)), 0xc496a1b8_u32 as i32);
@@ -31,7 +31,7 @@ mod tests {
 
     #[test]
     fn test_execute_jal_misaligned() {
-        let mut sys = System::new(0);
+        let mut sys = System::new();
         sys.state.pc = 0xc496a1b4;
 
         assert_eq!(

@@ -23,7 +23,7 @@ mod tests {
 
     #[test]
     fn test_execute_jalr() {
-        let mut sys = System::new(0);
+        let mut sys = System::new();
         sys.state.pc = 0xc496a1b4;
         *sys.reg_mut(&Reg::new(2)) = 0xbcfec832_u32 as i32;
 
@@ -34,7 +34,7 @@ mod tests {
 
     #[test]
     fn test_execute_jalr_misaligned() {
-        let mut sys = System::new(0);
+        let mut sys = System::new();
         sys.state.pc = 0xc496a1b4;
         *sys.reg_mut(&Reg::new(2)) = 0xbcfec832_u32 as i32;
 

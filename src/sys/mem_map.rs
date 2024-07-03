@@ -93,7 +93,6 @@ impl MemMap {
     }
 
     pub fn write_u32(&mut self, addr: u64, val: u32) -> ResultE {
-        println!("Write to {addr:09x} with {val:08x}");
         if !self.check_valid(addr) {
             Err(StoreAccessFault)
         } else if addr & 0b11 != 0 {

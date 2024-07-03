@@ -60,7 +60,7 @@ mod tests {
 
     #[test]
     fn test_execute_load_byte() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
         sys.mem.write_u32(0, 0xbcfec832).unwrap();
 
         assert_load(&mut sys, 1, 0, 0, LoadFunct::B, 0x000000_32);
@@ -72,7 +72,7 @@ mod tests {
 
     #[test]
     fn test_execute_load_byte_unsigned() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
         sys.mem.write_u32(0, 0xbcfec832).unwrap();
 
         assert_load(&mut sys, 1, 0, 0, LoadFunct::Bu, 0x000000_32);
@@ -84,7 +84,7 @@ mod tests {
 
     #[test]
     fn test_execute_load_halfword() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
         sys.mem.write_u32(0, 0xbcfec832).unwrap();
 
         assert_load(&mut sys, 1, 0, 0, LoadFunct::H, 0xffff_c832);
@@ -94,7 +94,7 @@ mod tests {
 
     #[test]
     fn test_execute_load_halfword_unsigned() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
         sys.mem.write_u32(0, 0xbcfec832).unwrap();
 
         assert_load(&mut sys, 1, 0, 0, LoadFunct::Hu, 0x0000_c832);
@@ -104,7 +104,7 @@ mod tests {
 
     #[test]
     fn test_execute_load_word() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
         sys.mem.write_u32(0, 0xbcfec832).unwrap();
 
         assert_load(&mut sys, 1, 0, 0, LoadFunct::W, 0xbcfec832);
@@ -113,27 +113,27 @@ mod tests {
 
     #[test]
     fn test_execute_load_fault() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
 
-        assert_load_failed(&mut sys, 1, 0, 16, LoadFunct::B, LoadAccessFault);
+        assert_load_failed(&mut sys, 1, 0, 0x100000, LoadFunct::B, LoadAccessFault);
         assert_load_failed(&mut sys, 1, 0, -4, LoadFunct::B, LoadAccessFault);
 
-        assert_load_failed(&mut sys, 1, 0, 16, LoadFunct::Bu, LoadAccessFault);
+        assert_load_failed(&mut sys, 1, 0, 0x100000, LoadFunct::Bu, LoadAccessFault);
         assert_load_failed(&mut sys, 1, 0, -4, LoadFunct::Bu, LoadAccessFault);
 
-        assert_load_failed(&mut sys, 1, 0, 16, LoadFunct::H, LoadAccessFault);
+        assert_load_failed(&mut sys, 1, 0, 0x100000, LoadFunct::H, LoadAccessFault);
         assert_load_failed(&mut sys, 1, 0, -4, LoadFunct::H, LoadAccessFault);
 
-        assert_load_failed(&mut sys, 1, 0, 16, LoadFunct::Hu, LoadAccessFault);
+        assert_load_failed(&mut sys, 1, 0, 0x100000, LoadFunct::Hu, LoadAccessFault);
         assert_load_failed(&mut sys, 1, 0, -4, LoadFunct::Hu, LoadAccessFault);
 
-        assert_load_failed(&mut sys, 1, 0, 16, LoadFunct::W, LoadAccessFault);
+        assert_load_failed(&mut sys, 1, 0, 0x100000, LoadFunct::W, LoadAccessFault);
         assert_load_failed(&mut sys, 1, 0, -4, LoadFunct::W, LoadAccessFault);
     }
 
     #[test]
     fn test_execute_load_misaligned_halfword() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
 
         assert_load_failed(&mut sys, 1, 0, 1, LoadFunct::H, LoadAddrMisaligned);
         assert_load_failed(&mut sys, 1, 0, 3, LoadFunct::H, LoadAddrMisaligned);
@@ -148,7 +148,7 @@ mod tests {
 
     #[test]
     fn test_execute_load_misaligned_word() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
 
         assert_load_failed(&mut sys, 1, 0, 1, LoadFunct::W, LoadAddrMisaligned);
         assert_load_failed(&mut sys, 1, 0, 2, LoadFunct::W, LoadAddrMisaligned);

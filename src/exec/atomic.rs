@@ -175,7 +175,7 @@ mod tests {
 
     #[test]
     fn test_lrsc_success() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
         sys.mem.write_u32(TEST_ADDR, 0xbcfec832).unwrap();
         *sys.reg_mut(&Reg::new(1)) = TEST_ADDR as i32;
         *sys.reg_mut(&Reg::new(2)) = 0x51290ce3_u32 as i32;
@@ -191,7 +191,7 @@ mod tests {
 
     #[test]
     fn test_lrsc_other_addr() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
         sys.mem.write_u32(TEST_ADDR, 0xbcfec832).unwrap();
         sys.mem.write_u32(OTHER_ADDR, 0x942a44b1).unwrap();
         *sys.reg_mut(&Reg::new(1)) = TEST_ADDR as i32;
@@ -215,7 +215,7 @@ mod tests {
 
     #[test]
     fn test_lrsc_store_w() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
         sys.mem.write_u32(TEST_ADDR, 0xbcfec832).unwrap();
         *sys.reg_mut(&Reg::new(1)) = TEST_ADDR as i32;
         *sys.reg_mut(&Reg::new(2)) = 0x51290ce3_u32 as i32;
@@ -232,7 +232,7 @@ mod tests {
 
     #[test]
     fn test_lrsc_store_h() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
         sys.mem.write_u32(TEST_ADDR, 0xbcfec832).unwrap();
         *sys.reg_mut(&Reg::new(1)) = TEST_ADDR as i32;
         *sys.reg_mut(&Reg::new(2)) = 0x51290ce3_u32 as i32;
@@ -249,7 +249,7 @@ mod tests {
 
     #[test]
     fn test_lrsc_store_b() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
         sys.mem.write_u32(TEST_ADDR, 0xbcfec832).unwrap();
         *sys.reg_mut(&Reg::new(1)) = TEST_ADDR as i32;
         *sys.reg_mut(&Reg::new(2)) = 0x51290ce3_u32 as i32;
@@ -266,7 +266,7 @@ mod tests {
 
     #[test]
     fn test_lrsc_store_w_other_addr() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
         sys.mem.write_u32(TEST_ADDR, 0xbcfec832).unwrap();
         *sys.reg_mut(&Reg::new(1)) = TEST_ADDR as i32;
         *sys.reg_mut(&Reg::new(2)) = 0x51290ce3_u32 as i32;
@@ -283,7 +283,7 @@ mod tests {
 
     #[test]
     fn test_lrsc_two_sc() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
         sys.mem.write_u32(TEST_ADDR, 0xbcfec832).unwrap();
         *sys.reg_mut(&Reg::new(1)) = TEST_ADDR as i32;
         *sys.reg_mut(&Reg::new(2)) = 0x51290ce3_u32 as i32;
@@ -300,7 +300,7 @@ mod tests {
 
     #[test]
     fn test_lrsc_two_sc_other_addr() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
         sys.mem.write_u32(TEST_ADDR, 0xbcfec832).unwrap();
         *sys.reg_mut(&Reg::new(1)) = TEST_ADDR as i32;
         *sys.reg_mut(&Reg::new(2)) = 0x51290ce3_u32 as i32;
@@ -318,7 +318,7 @@ mod tests {
 
     #[test]
     fn test_lrsc_two_lr() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
         sys.mem.write_u32(TEST_ADDR, 0xbcfec832).unwrap();
         *sys.reg_mut(&Reg::new(1)) = TEST_ADDR as i32;
         *sys.reg_mut(&Reg::new(2)) = 0x51290ce3_u32 as i32;
@@ -335,12 +335,12 @@ mod tests {
 
     #[test]
     fn test_lr_fault() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
 
-        *sys.reg_mut(&Reg::new(1)) = 16;
+        *sys.reg_mut(&Reg::new(1)) = 0x100000;
         assert_eq!(
             load_reserved(&mut sys, 2, 1),
-            Err(Trap::from_exception(LoadAccessFault, 16))
+            Err(Trap::from_exception(LoadAccessFault, 0x100000))
         );
 
         *sys.reg_mut(&Reg::new(1)) = -1;
@@ -352,7 +352,7 @@ mod tests {
 
     #[test]
     fn test_lr_misaligned() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
 
         *sys.reg_mut(&Reg::new(1)) = 1;
         assert_eq!(
@@ -375,12 +375,12 @@ mod tests {
 
     #[test]
     fn test_sc_fault() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
 
-        *sys.reg_mut(&Reg::new(1)) = 16;
+        *sys.reg_mut(&Reg::new(1)) = 0x100000;
         assert_eq!(
             store_conditional(&mut sys, 4, 1, 2),
-            Err(Trap::from_exception(StoreAccessFault, 16))
+            Err(Trap::from_exception(StoreAccessFault, 0x100000))
         );
 
         *sys.reg_mut(&Reg::new(1)) = -1;
@@ -392,7 +392,7 @@ mod tests {
 
     #[test]
     fn test_sc_misaligned() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
 
         *sys.reg_mut(&Reg::new(1)) = 1;
         assert_eq!(
@@ -415,7 +415,7 @@ mod tests {
 
     #[test]
     fn test_amo() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
         sys.mem.write_u32(0, 0).unwrap();
         *sys.state.reg_mut(&Reg::new(1)) = 0xbcfec832_u32 as i32;
         *sys.state.reg_mut(&Reg::new(2)) = 0x51290ce3_u32 as i32;
@@ -438,7 +438,7 @@ mod tests {
     #[rustfmt::skip]
     fn test_amo_same_reg() {
         // Test everything using only 1 register to check for data races (write must be after read)
-        let mut sys = System::new(16);
+        let mut sys = System::new();
         sys.mem.write_u32(0, 0).unwrap();
 
         *sys.state.reg_mut(&Reg::new(1)) = 0xbcfec832_u32 as i32;
@@ -467,9 +467,9 @@ mod tests {
 
     #[test]
     fn test_amo_fault() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
         sys.mem.write_u32(0, 0).unwrap();
-        *sys.state.reg_mut(&Reg::new(1)) = 16;
+        *sys.state.reg_mut(&Reg::new(1)) = 0x100000;
         *sys.state.reg_mut(&Reg::new(2)) = -1;
 
         assert_amo_failed(&mut sys, 3, 1, 2, AmoFunct::Swap, StoreAccessFault);
@@ -485,7 +485,7 @@ mod tests {
 
     #[test]
     fn test_amo_misaligned() {
-        let mut sys = System::new(16);
+        let mut sys = System::new();
         sys.mem.write_u32(0, 0).unwrap();
         *sys.state.reg_mut(&Reg::new(1)) = 1;
         *sys.state.reg_mut(&Reg::new(2)) = 6;

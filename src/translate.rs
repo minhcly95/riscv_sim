@@ -269,8 +269,9 @@ impl Permission {
 
 #[cfg(test)]
 mod tests {
+    use bytesize::ByteSize;
     use super::*;
-    use crate::Exception::*;
+    use crate::{Config, Exception::*};
 
     const RAM_BASE: u64 = 0x00400_000;
 
@@ -297,8 +298,12 @@ mod tests {
     const U_VPN1: u32 = (U_PAGE_VA >> 22) & MASK_VPN;
 
     fn make_sys() -> System {
-        let mut sys = System::new(0x10000); // 64kB
-        sys.mem.ram_base = RAM_BASE;
+        let mut sys = System::from_config(Config {
+            binary: None,
+            size: ByteSize::b(0x10000), // 16kB
+            base: RAM_BASE as u32,
+            verbose: true,
+        });
 
         // Enable paging
         sys.ctrl.privilege = MPriv::S;
