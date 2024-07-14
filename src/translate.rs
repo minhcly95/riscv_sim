@@ -1,9 +1,10 @@
 use crate::{
     sys::{
         control::{Control, MPriv, SatpMode},
+        mem_map::{page_fault, AccessAttr, AccessType, AccessWidth},
         System,
     },
-    Exception, Result64E,
+    Result64E,
 };
 
 const MASK_OFFSET: u32 = 0xfff;
@@ -31,8 +32,8 @@ pub fn translate(sys: &mut System, addr: u32, access_type: AccessType) -> Result
     // Two-level translation
     for level in [1, 0] {
         let pte_addr = ((ppn as u64) << 12) | (vpn[level] << 2) as u64;
-        let pte =
-            PageTableEntry::from(sys.mem.read_u32(pte_addr)?).ok_or(page_fault(access_type))?;
+        let pte = PageTableEntry::from(sys.mem.read_u32(pte_addr, pte_access_attr(access_type))?)
+            .ok_or(page_fault(access_type))?;
 
         if !pte.valid {
             return Err(page_fault(access_type));
@@ -101,7 +102,8 @@ pub fn process_page(
         if access_type == AccessType::Store {
             pte.dirty = true;
         }
-        sys.mem.write_u32(pte_addr, pte.to_int())?;
+        sys.mem
+            .write_u32(pte_addr, pte.to_int(), pte_access_attr(access_type))?;
     }
 
     // Translation is successful
@@ -114,11 +116,12 @@ pub fn process_page(
     }
 }
 
-fn page_fault(access_type: AccessType) -> Exception {
-    match access_type {
-        AccessType::Instr => Exception::InstrPageFault,
-        AccessType::Load => Exception::LoadPageFault,
-        AccessType::Store => Exception::StorePageFault,
+fn pte_access_attr(atype: AccessType) -> AccessAttr {
+    AccessAttr {
+        atype,
+        width: AccessWidth::Word,
+        lrsc: false,
+        amo: false,
     }
 }
 
@@ -135,13 +138,6 @@ fn effective_privilege(sys: &System, access_type: AccessType) -> MPriv {
     } else {
         privilege
     }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum AccessType {
-    Instr,
-    Load,
-    Store,
 }
 
 pub struct PageTableEntry {
@@ -269,9 +265,9 @@ impl Permission {
 
 #[cfg(test)]
 mod tests {
-    use bytesize::ByteSize;
     use super::*;
     use crate::{Config, Exception::*};
+    use bytesize::ByteSize;
 
     const RAM_BASE: u64 = 0x00400_000;
 
@@ -326,6 +322,7 @@ mod tests {
                     ppn: (PT_SUB_S_PA >> 12) as u32,
                 }
                 .to_int(),
+                pte_access_attr(AccessType::Store),
             )
             .unwrap();
         sys.mem
@@ -342,6 +339,7 @@ mod tests {
                     ppn: (PT_SUB_U_PA >> 12) as u32,
                 }
                 .to_int(),
+                pte_access_attr(AccessType::Store),
             )
             .unwrap();
 
@@ -360,6 +358,7 @@ mod tests {
                     ppn: (S_PAGE_PA >> 12) as u32,
                 }
                 .to_int(),
+                pte_access_attr(AccessType::Store),
             )
             .unwrap();
 
@@ -378,6 +377,7 @@ mod tests {
                     ppn: (U_PAGE_PA >> 12) as u32,
                 }
                 .to_int(),
+                pte_access_attr(AccessType::Store),
             )
             .unwrap();
 

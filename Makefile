@@ -1,5 +1,4 @@
-PREFIX ?= riscv64-unknown-elf-
-RISCV_TESTS ?= $(RISCV_HOME)/share/riscv-tests
+TARGET ?= riscv32-unknown-linux-gnu
 
 ASM = fibonacci int_test mul_test lrsc_test amo_test csr_test
 ASM_DIR = target/asm
@@ -26,10 +25,10 @@ $(ASM_DIR):
 	mkdir -p $(ASM_DIR)
 
 $(ASM_DIR)/%.bin: $(ASM_DIR)/%.o
-	$(PREFIX)objcopy -j .text -O binary $< $@
+	$(TARGET)-objcopy -j .text -O binary $< $@
 
 $(ASM_DIR)/%.o: asm/src/%.s
-	$(PREFIX)as -march=rv32ima_zicsr -o $@ $<
+	$(TARGET)-as -march=rv32ima_zicsr -mabi=ilp32 -o $@ $<
 
 isa: $(ISA_BIN)
 
@@ -39,7 +38,7 @@ $(ISA_DIR):
 	mkdir -p $(ISA_DIR)
 
 $(ISA_DIR)/%.bin: $(RISCV_TESTS)/isa/%
-	$(PREFIX)objcopy -O binary $< $@
+	$(TARGET)-objcopy -O binary $< $@
 
 clean: clean-asm clean-isa
 

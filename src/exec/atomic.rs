@@ -1,10 +1,10 @@
 use super::{advance_pc, Result};
 use crate::{
     instr::{funct::*, reg::Reg},
-    translate::*,
-    Exception, System, Trap,
+    sys::mem_map::{AccessAttr, AccessType, AccessWidth},
+    translate::translate,
+    System, Trap,
 };
-use core::panic;
 
 pub fn execute_atomic(sys: &mut System, rd: &Reg, rs1: &Reg, rs2: &Reg, f: &AtomicFunct) -> Result {
     match f {
@@ -22,7 +22,13 @@ fn load_reserved(sys: &mut System, rd: &Reg, rs1: &Reg) -> Result {
     // Translate virtual address
     let paddr = translate(sys, vaddr, AccessType::Load).map_err(make_trap)?;
     // Load and reserve data with physical address
-    let data = sys.mem.read_u32(paddr).map_err(make_trap)? as i32;
+    let attr = AccessAttr {
+        atype: AccessType::Load,
+        width: AccessWidth::Word,
+        lrsc: true,
+        amo: false,
+    };
+    let data = sys.mem.read_u32(paddr, attr).map_err(make_trap)? as i32;
     sys.mem.reserve(paddr);
     *sys.reg_mut(rd) = data;
     Ok(())
@@ -34,14 +40,24 @@ fn store_conditional(sys: &mut System, rd: &Reg, rs1: &Reg, rs2: &Reg) -> Result
     // Translate virtual address
     let paddr = translate(sys, vaddr, AccessType::Store).map_err(make_trap)?;
     // Check and store data with physical address
+    let attr = AccessAttr {
+        atype: AccessType::Store,
+        width: AccessWidth::Word,
+        lrsc: true,
+        amo: false,
+    };
     if sys.mem.is_reserved(paddr) {
         // Only write when reservation is still valid
         let data = sys.reg(rs2);
-        sys.mem.write_u32(paddr, data as u32).map_err(make_trap)?;
+        sys.mem
+            .write_u32(paddr, data as u32, attr)
+            .map_err(make_trap)?;
         *sys.reg_mut(rd) = 0;
     } else {
         // Still generate exceptions for faulty accesses
-        sys.mem.check_write_u32(paddr).map_err(make_trap)?;
+        sys.mem
+            .check_and_translate(paddr, attr)
+            .map_err(make_trap)?;
         *sys.reg_mut(rd) = 1;
     }
     // Invalidate any reservation
@@ -58,18 +74,13 @@ fn execute_amo(sys: &mut System, rd: &Reg, rs1: &Reg, rs2: &Reg, f: &AmoFunct) -
     let paddr = translate(sys, vaddr, AccessType::Store).map_err(make_trap)?;
 
     // Read the data
-    let data = sys
-        .mem
-        .read_u32(paddr)
-        .map_err(|ex| {
-            // An exception raised from an AMO counts as a store exception
-            match ex {
-                Exception::LoadAddrMisaligned => Exception::StoreAddrMisaligned,
-                Exception::LoadAccessFault => Exception::StoreAccessFault,
-                _ => panic!("Unexpected exception when calling Memory::read_u32"),
-            }
-        })
-        .map_err(make_trap)? as i32;
+    let attr = AccessAttr {
+        atype: AccessType::Store,
+        width: AccessWidth::Word,
+        lrsc: false,
+        amo: true,
+    };
+    let data = sys.mem.read_u32(paddr, attr).map_err(make_trap)? as i32;
 
     // Modify the data as store back at addr
     let new_data: i32;
@@ -84,7 +95,9 @@ fn execute_amo(sys: &mut System, rd: &Reg, rs1: &Reg, rs2: &Reg, f: &AmoFunct) -
         AmoFunct::Minu => new_data = (data as u32).min(rs2 as u32) as i32,
         AmoFunct::Maxu => new_data = (data as u32).max(rs2 as u32) as i32,
     }
-    sys.mem.write_u32(paddr, new_data as u32).map_err(make_trap)?;
+    sys.mem
+        .write_u32(paddr, new_data as u32, attr)
+        .map_err(make_trap)?;
 
     // Store original data to rd
     *sys.reg_mut(rd) = data;
@@ -94,11 +107,32 @@ fn execute_amo(sys: &mut System, rd: &Reg, rs1: &Reg, rs2: &Reg, f: &AmoFunct) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{exec::store::execute_store, Trap};
-    use Exception::*;
+    use crate::{
+        exec::store::execute_store,
+        Exception::{self, *},
+        Trap,
+    };
 
     const TEST_ADDR: u64 = 0x4;
     const OTHER_ADDR: u64 = 0x8;
+
+    fn load_attr() -> AccessAttr {
+        AccessAttr {
+            width: AccessWidth::Word,
+            atype: AccessType::Load,
+            amo: false,
+            lrsc: false,
+        }
+    }
+
+    fn store_attr() -> AccessAttr {
+        AccessAttr {
+            width: AccessWidth::Word,
+            atype: AccessType::Store,
+            amo: false,
+            lrsc: false,
+        }
+    }
 
     fn load_reserved(sys: &mut System, rd: u8, rs1: u8) -> Result {
         execute_atomic(
@@ -130,7 +164,7 @@ mod tests {
 
     fn sc_and_assert(sys: &mut System, expect: u32, success: bool) {
         store_conditional(sys, 4, 1, 2).unwrap();
-        assert_eq!(sys.mem.read_u32(TEST_ADDR).unwrap(), expect);
+        assert_eq!(sys.mem.read_u32(TEST_ADDR, load_attr()).unwrap(), expect);
         assert_reg(&sys, 4, if success { 0 } else { 1 });
         assert!(!sys.mem.is_reserved(TEST_ADDR));
     }
@@ -154,7 +188,7 @@ mod tests {
         .unwrap();
         assert_eq!(sys.reg(&Reg::new(rd)), expect_rd as i32);
         assert_eq!(
-            sys.mem.read_u32(sys.reg(&Reg::new(rs1)) as u64).unwrap(),
+            sys.mem.read_u32(sys.reg(&Reg::new(rs1)) as u64, load_attr()).unwrap(),
             expect_mem
         );
     }
@@ -176,7 +210,7 @@ mod tests {
     #[test]
     fn test_lrsc_success() {
         let mut sys = System::new();
-        sys.mem.write_u32(TEST_ADDR, 0xbcfec832).unwrap();
+        sys.mem.write_u32(TEST_ADDR, 0xbcfec832, store_attr()).unwrap();
         *sys.reg_mut(&Reg::new(1)) = TEST_ADDR as i32;
         *sys.reg_mut(&Reg::new(2)) = 0x51290ce3_u32 as i32;
 
@@ -192,8 +226,8 @@ mod tests {
     #[test]
     fn test_lrsc_other_addr() {
         let mut sys = System::new();
-        sys.mem.write_u32(TEST_ADDR, 0xbcfec832).unwrap();
-        sys.mem.write_u32(OTHER_ADDR, 0x942a44b1).unwrap();
+        sys.mem.write_u32(TEST_ADDR, 0xbcfec832, store_attr()).unwrap();
+        sys.mem.write_u32(OTHER_ADDR, 0x942a44b1, store_attr()).unwrap();
         *sys.reg_mut(&Reg::new(1)) = TEST_ADDR as i32;
         *sys.reg_mut(&Reg::new(2)) = 0x51290ce3_u32 as i32;
         *sys.reg_mut(&Reg::new(6)) = OTHER_ADDR as i32;
@@ -204,8 +238,8 @@ mod tests {
         assert!(sys.mem.is_reserved(TEST_ADDR));
         // Store conditional (other addr - should fail)
         store_conditional(&mut sys, 4, 6, 2).unwrap();
-        assert_eq!(sys.mem.read_u32(TEST_ADDR).unwrap(), 0xbcfec832);
-        assert_eq!(sys.mem.read_u32(OTHER_ADDR).unwrap(), 0x942a44b1);
+        assert_eq!(sys.mem.read_u32(TEST_ADDR, load_attr()).unwrap(), 0xbcfec832);
+        assert_eq!(sys.mem.read_u32(OTHER_ADDR, load_attr()).unwrap(), 0x942a44b1);
         assert_reg(&sys, 4, 1);
         assert!(!sys.mem.is_reserved(TEST_ADDR));
         assert!(!sys.mem.is_reserved(OTHER_ADDR));
@@ -216,7 +250,7 @@ mod tests {
     #[test]
     fn test_lrsc_store_w() {
         let mut sys = System::new();
-        sys.mem.write_u32(TEST_ADDR, 0xbcfec832).unwrap();
+        sys.mem.write_u32(TEST_ADDR, 0xbcfec832, store_attr()).unwrap();
         *sys.reg_mut(&Reg::new(1)) = TEST_ADDR as i32;
         *sys.reg_mut(&Reg::new(2)) = 0x51290ce3_u32 as i32;
         *sys.reg_mut(&Reg::new(5)) = 0x942a44b1_u32 as i32;
@@ -233,7 +267,7 @@ mod tests {
     #[test]
     fn test_lrsc_store_h() {
         let mut sys = System::new();
-        sys.mem.write_u32(TEST_ADDR, 0xbcfec832).unwrap();
+        sys.mem.write_u32(TEST_ADDR, 0xbcfec832, store_attr()).unwrap();
         *sys.reg_mut(&Reg::new(1)) = TEST_ADDR as i32;
         *sys.reg_mut(&Reg::new(2)) = 0x51290ce3_u32 as i32;
         *sys.reg_mut(&Reg::new(5)) = 0x942a44b1_u32 as i32;
@@ -250,7 +284,7 @@ mod tests {
     #[test]
     fn test_lrsc_store_b() {
         let mut sys = System::new();
-        sys.mem.write_u32(TEST_ADDR, 0xbcfec832).unwrap();
+        sys.mem.write_u32(TEST_ADDR, 0xbcfec832, store_attr()).unwrap();
         *sys.reg_mut(&Reg::new(1)) = TEST_ADDR as i32;
         *sys.reg_mut(&Reg::new(2)) = 0x51290ce3_u32 as i32;
         *sys.reg_mut(&Reg::new(5)) = 0x942a44b1_u32 as i32;
@@ -267,7 +301,7 @@ mod tests {
     #[test]
     fn test_lrsc_store_w_other_addr() {
         let mut sys = System::new();
-        sys.mem.write_u32(TEST_ADDR, 0xbcfec832).unwrap();
+        sys.mem.write_u32(TEST_ADDR, 0xbcfec832, store_attr()).unwrap();
         *sys.reg_mut(&Reg::new(1)) = TEST_ADDR as i32;
         *sys.reg_mut(&Reg::new(2)) = 0x51290ce3_u32 as i32;
         *sys.reg_mut(&Reg::new(5)) = 0x942a44b1_u32 as i32;
@@ -284,7 +318,7 @@ mod tests {
     #[test]
     fn test_lrsc_two_sc() {
         let mut sys = System::new();
-        sys.mem.write_u32(TEST_ADDR, 0xbcfec832).unwrap();
+        sys.mem.write_u32(TEST_ADDR, 0xbcfec832, store_attr()).unwrap();
         *sys.reg_mut(&Reg::new(1)) = TEST_ADDR as i32;
         *sys.reg_mut(&Reg::new(2)) = 0x51290ce3_u32 as i32;
         *sys.reg_mut(&Reg::new(5)) = 0x942a44b1_u32 as i32;
@@ -301,7 +335,7 @@ mod tests {
     #[test]
     fn test_lrsc_two_sc_other_addr() {
         let mut sys = System::new();
-        sys.mem.write_u32(TEST_ADDR, 0xbcfec832).unwrap();
+        sys.mem.write_u32(TEST_ADDR, 0xbcfec832, store_attr()).unwrap();
         *sys.reg_mut(&Reg::new(1)) = TEST_ADDR as i32;
         *sys.reg_mut(&Reg::new(2)) = 0x51290ce3_u32 as i32;
         *sys.reg_mut(&Reg::new(5)) = 0x942a44b1_u32 as i32;
@@ -319,7 +353,7 @@ mod tests {
     #[test]
     fn test_lrsc_two_lr() {
         let mut sys = System::new();
-        sys.mem.write_u32(TEST_ADDR, 0xbcfec832).unwrap();
+        sys.mem.write_u32(TEST_ADDR, 0xbcfec832, store_attr()).unwrap();
         *sys.reg_mut(&Reg::new(1)) = TEST_ADDR as i32;
         *sys.reg_mut(&Reg::new(2)) = 0x51290ce3_u32 as i32;
         *sys.reg_mut(&Reg::new(6)) = OTHER_ADDR as i32;
@@ -416,7 +450,7 @@ mod tests {
     #[test]
     fn test_amo() {
         let mut sys = System::new();
-        sys.mem.write_u32(0, 0).unwrap();
+        sys.mem.write_u32(0, 0, store_attr()).unwrap();
         *sys.state.reg_mut(&Reg::new(1)) = 0xbcfec832_u32 as i32;
         *sys.state.reg_mut(&Reg::new(2)) = 0x51290ce3_u32 as i32;
 
@@ -439,7 +473,7 @@ mod tests {
     fn test_amo_same_reg() {
         // Test everything using only 1 register to check for data races (write must be after read)
         let mut sys = System::new();
-        sys.mem.write_u32(0, 0).unwrap();
+        sys.mem.write_u32(0, 0, store_attr()).unwrap();
 
         *sys.state.reg_mut(&Reg::new(1)) = 0xbcfec832_u32 as i32;
         assert_amo(&mut sys, 1, 0, 1, AmoFunct::Swap, 0x00000000, 0xbcfec832);
@@ -468,7 +502,7 @@ mod tests {
     #[test]
     fn test_amo_fault() {
         let mut sys = System::new();
-        sys.mem.write_u32(0, 0).unwrap();
+        sys.mem.write_u32(0, 0, store_attr()).unwrap();
         *sys.state.reg_mut(&Reg::new(1)) = 0x100000;
         *sys.state.reg_mut(&Reg::new(2)) = -1;
 
@@ -486,7 +520,7 @@ mod tests {
     #[test]
     fn test_amo_misaligned() {
         let mut sys = System::new();
-        sys.mem.write_u32(0, 0).unwrap();
+        sys.mem.write_u32(0, 0, store_attr()).unwrap();
         *sys.state.reg_mut(&Reg::new(1)) = 1;
         *sys.state.reg_mut(&Reg::new(2)) = 6;
 

@@ -1,6 +1,7 @@
 use super::{advance_pc, Result};
 use crate::{
     instr::{funct::StoreFunct, reg::Reg},
+    sys::mem_map::{AccessAttr, AccessType, AccessWidth},
     translate::*,
     System, Trap,
 };
@@ -13,19 +14,20 @@ pub fn execute_store(sys: &mut System, rs1: &Reg, rs2: &Reg, imm: i32, f: &Store
     // Translate virtual address
     let paddr = translate(sys, vaddr, AccessType::Store).map_err(make_trap)?;
     // Store data with physical address
+    let attr = AccessAttr {
+        atype: AccessType::Store,
+        lrsc: false,
+        amo: false,
+        width: match f {
+            StoreFunct::B => AccessWidth::Byte,
+            StoreFunct::H => AccessWidth::HalfWord,
+            StoreFunct::W => AccessWidth::Word,
+        },
+    };
     match f {
-        StoreFunct::B => sys
-            .mem
-            .write_u8(paddr, rs2 as u8)
-            .map_err(make_trap)?,
-        StoreFunct::H => sys
-            .mem
-            .write_u16(paddr, rs2 as u16)
-            .map_err(make_trap)?,
-        StoreFunct::W => sys
-            .mem
-            .write_u32(paddr, rs2 as u32)
-            .map_err(make_trap)?,
+        StoreFunct::B => sys.mem.write_u8(paddr, rs2 as u8, attr).map_err(make_trap)?,
+        StoreFunct::H => sys.mem.write_u16(paddr, rs2 as u16, attr).map_err(make_trap)?,
+        StoreFunct::W => sys.mem.write_u32(paddr, rs2 as u32, attr).map_err(make_trap)?,
     };
     advance_pc(sys);
     Ok(())

@@ -1,6 +1,7 @@
 use super::{advance_pc, Result};
 use crate::{
     instr::{funct::LoadFunct, reg::Reg},
+    sys::mem_map::{AccessAttr, AccessType, AccessWidth},
     translate::*,
     System, Trap,
 };
@@ -12,12 +13,22 @@ pub fn execute_load(sys: &mut System, rd: &Reg, rs1: &Reg, imm: i32, f: &LoadFun
     // Translate virtual address
     let paddr = translate(sys, vaddr, AccessType::Load).map_err(make_trap)?;
     // Load data with physical address
+    let attr = AccessAttr {
+        atype: AccessType::Load,
+        lrsc: false,
+        amo: false,
+        width: match f {
+            LoadFunct::B | LoadFunct::Bu => AccessWidth::Byte,
+            LoadFunct::H | LoadFunct::Hu => AccessWidth::HalfWord,
+            LoadFunct::W => AccessWidth::Word,
+        }
+    };
     let data = match f {
-        LoadFunct::B => sign_extend_8(sys.mem.read_u8(paddr).map_err(make_trap)?),
-        LoadFunct::Bu => sys.mem.read_u8(paddr).map_err(make_trap)? as i32,
-        LoadFunct::H => sign_extend_16(sys.mem.read_u16(paddr).map_err(make_trap)?),
-        LoadFunct::Hu => sys.mem.read_u16(paddr).map_err(make_trap)? as i32,
-        LoadFunct::W => sys.mem.read_u32(paddr).map_err(make_trap)? as i32,
+        LoadFunct::B => sign_extend_8(sys.mem.read_u8(paddr, attr).map_err(make_trap)?),
+        LoadFunct::Bu => sys.mem.read_u8(paddr, attr).map_err(make_trap)? as i32,
+        LoadFunct::H => sign_extend_16(sys.mem.read_u16(paddr, attr).map_err(make_trap)?),
+        LoadFunct::Hu => sys.mem.read_u16(paddr, attr).map_err(make_trap)? as i32,
+        LoadFunct::W => sys.mem.read_u32(paddr, attr).map_err(make_trap)? as i32,
     };
     *sys.reg_mut(rd) = data;
     advance_pc(sys);
@@ -40,6 +51,15 @@ mod tests {
         Trap,
     };
 
+    fn store_attr() -> AccessAttr {
+        AccessAttr {
+            width: AccessWidth::Word,
+            atype: AccessType::Store,
+            amo: false,
+            lrsc: false,
+        }
+    }
+
     fn assert_load(sys: &mut System, rd: u8, rs1: u8, imm: i32, f: LoadFunct, expect: u32) {
         execute_load(sys, &Reg::new(rd), &Reg::new(rs1), imm, &f).unwrap();
         assert_eq!(sys.state.reg(&Reg::new(rd)), expect as i32);
@@ -61,7 +81,7 @@ mod tests {
     #[test]
     fn test_execute_load_byte() {
         let mut sys = System::new();
-        sys.mem.write_u32(0, 0xbcfec832).unwrap();
+        sys.mem.write_u32(0, 0xbcfec832, store_attr()).unwrap();
 
         assert_load(&mut sys, 1, 0, 0, LoadFunct::B, 0x000000_32);
         assert_load(&mut sys, 1, 0, 1, LoadFunct::B, 0xffffff_c8);
@@ -73,7 +93,7 @@ mod tests {
     #[test]
     fn test_execute_load_byte_unsigned() {
         let mut sys = System::new();
-        sys.mem.write_u32(0, 0xbcfec832).unwrap();
+        sys.mem.write_u32(0, 0xbcfec832, store_attr()).unwrap();
 
         assert_load(&mut sys, 1, 0, 0, LoadFunct::Bu, 0x000000_32);
         assert_load(&mut sys, 1, 0, 1, LoadFunct::Bu, 0x000000_c8);
@@ -85,7 +105,7 @@ mod tests {
     #[test]
     fn test_execute_load_halfword() {
         let mut sys = System::new();
-        sys.mem.write_u32(0, 0xbcfec832).unwrap();
+        sys.mem.write_u32(0, 0xbcfec832, store_attr()).unwrap();
 
         assert_load(&mut sys, 1, 0, 0, LoadFunct::H, 0xffff_c832);
         assert_load(&mut sys, 1, 0, 2, LoadFunct::H, 0xffff_bcfe);
@@ -95,7 +115,7 @@ mod tests {
     #[test]
     fn test_execute_load_halfword_unsigned() {
         let mut sys = System::new();
-        sys.mem.write_u32(0, 0xbcfec832).unwrap();
+        sys.mem.write_u32(0, 0xbcfec832, store_attr()).unwrap();
 
         assert_load(&mut sys, 1, 0, 0, LoadFunct::Hu, 0x0000_c832);
         assert_load(&mut sys, 1, 0, 2, LoadFunct::Hu, 0x0000_bcfe);
@@ -105,7 +125,7 @@ mod tests {
     #[test]
     fn test_execute_load_word() {
         let mut sys = System::new();
-        sys.mem.write_u32(0, 0xbcfec832).unwrap();
+        sys.mem.write_u32(0, 0xbcfec832, store_attr()).unwrap();
 
         assert_load(&mut sys, 1, 0, 0, LoadFunct::W, 0xbcfec832);
         assert_eq!(sys.state.pc(), 4);

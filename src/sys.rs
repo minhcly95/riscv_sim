@@ -30,7 +30,7 @@ impl System {
     }
 
     pub fn from_config(cfg: Config) -> System {
-        let size = cfg.size.as_u64() as usize;
+        let size = cfg.size.as_u64();
         let binary = cfg.binary.clone();
 
         let mut sys = System {
@@ -41,7 +41,9 @@ impl System {
             code: 0,
         };
 
-        sys.mem.ram_base = sys.cfg.base as u64;
+        let ram_base = sys.cfg.base as u64;
+        let ram_end = ram_base + size;
+        sys.mem.ram_range = ram_base..ram_end;
         *sys.pc_mut() = sys.cfg.base;
 
         if let Some(path) = binary {
@@ -113,7 +115,13 @@ pub fn fetch(sys: &mut System) -> Result32 {
     let vpc = sys.pc();
     let make_trap = |ex| Trap::from_exception(ex, vpc);
     let ppc = translate(sys, vpc, AccessType::Instr).map_err(make_trap)?;
-    let code: u32 = sys.mem.fetch(ppc).map_err(make_trap)?;
+    let attr = AccessAttr {
+        atype: AccessType::Instr,
+        width: AccessWidth::Word,
+        lrsc: false,
+        amo: false,
+    };
+    let code: u32 = sys.mem.read_u32(ppc, attr).map_err(make_trap)?;
     Ok(code)
 }
 
