@@ -135,19 +135,19 @@ mod tests {
     fn test_execute_load_fault() {
         let mut sys = System::new();
 
-        assert_load_failed(&mut sys, 1, 0, 0x100000, LoadFunct::B, LoadAccessFault);
+        assert_load_failed(&mut sys, 1, 0, 0x80000000u32 as i32, LoadFunct::B, LoadAccessFault);
         assert_load_failed(&mut sys, 1, 0, -4, LoadFunct::B, LoadAccessFault);
 
-        assert_load_failed(&mut sys, 1, 0, 0x100000, LoadFunct::Bu, LoadAccessFault);
+        assert_load_failed(&mut sys, 1, 0, 0x80000000u32 as i32, LoadFunct::Bu, LoadAccessFault);
         assert_load_failed(&mut sys, 1, 0, -4, LoadFunct::Bu, LoadAccessFault);
 
-        assert_load_failed(&mut sys, 1, 0, 0x100000, LoadFunct::H, LoadAccessFault);
+        assert_load_failed(&mut sys, 1, 0, 0x80000000u32 as i32, LoadFunct::H, LoadAccessFault);
         assert_load_failed(&mut sys, 1, 0, -4, LoadFunct::H, LoadAccessFault);
 
-        assert_load_failed(&mut sys, 1, 0, 0x100000, LoadFunct::Hu, LoadAccessFault);
+        assert_load_failed(&mut sys, 1, 0, 0x80000000u32 as i32, LoadFunct::Hu, LoadAccessFault);
         assert_load_failed(&mut sys, 1, 0, -4, LoadFunct::Hu, LoadAccessFault);
 
-        assert_load_failed(&mut sys, 1, 0, 0x100000, LoadFunct::W, LoadAccessFault);
+        assert_load_failed(&mut sys, 1, 0, 0x80000000u32 as i32, LoadFunct::W, LoadAccessFault);
         assert_load_failed(&mut sys, 1, 0, -4, LoadFunct::W, LoadAccessFault);
     }
 

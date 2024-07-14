@@ -11,7 +11,8 @@ pub mod trap;
 pub use config::Config;
 pub use instr::{reg::Reg, Instr};
 pub use run::{
-    load_from_file, run_for, run_for_or_until_ecall, run_until_ecall, run_until_trapped,
+    load_image_from_file, run_for, run_for_or_until_ecall, run_forever, run_until_ecall,
+    run_until_trapped,
 };
 pub use sys::System;
 pub use trap::{Exception, Interrupt, Trap};

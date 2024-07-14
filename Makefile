@@ -15,8 +15,9 @@ ISA_BIN = $(addprefix $(ISA_DIR)/,$(addsuffix .bin,$(ISA)))
 
 .PHONY: all asm isa clean clean-asm clean-isa
 
-all: asm isa
+all: asm isa dt
 
+# Build-in tests
 asm: $(ASM_BIN)
 
 $(ASM_BIN): | $(ASM_DIR)
@@ -30,6 +31,7 @@ $(ASM_DIR)/%.bin: $(ASM_DIR)/%.o
 $(ASM_DIR)/%.o: asm/src/%.s
 	$(TARGET)-as -march=rv32ima_zicsr -mabi=ilp32 -o $@ $<
 
+# riscv-tests
 isa: $(ISA_BIN)
 
 $(ISA_BIN): | $(ISA_DIR)
@@ -40,7 +42,14 @@ $(ISA_DIR):
 $(ISA_DIR)/%.bin: $(RISCV_TESTS)/isa/%
 	$(TARGET)-objcopy -O binary $< $@
 
-clean: clean-asm clean-isa
+# Device tree
+dt: target/riscv_sim.dtb
+
+target/riscv_sim.dtb: dt/riscv_sim.dts
+	dtc -O dtb -o $@ $<
+
+# Clean
+clean: clean-asm clean-isa clean-dt
 
 clean-asm:
 	rm -f $(ASM_BIN)
@@ -48,3 +57,6 @@ clean-asm:
 
 clean-isa:
 	rm -f $(ISA_BIN)
+
+clean-dt:
+	rm -f target/riscv_sim.dtb

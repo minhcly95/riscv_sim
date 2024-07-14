@@ -1,19 +1,43 @@
-use crate::{sys::log_with_pc, trap::TrapCause, Exception, System, Trap};
+use crate::{
+    sys::{log_with_pc, mem_map::dtb::Dtb},
+    trap::TrapCause,
+    Exception, System, Trap,
+};
 use colored::*;
 use std::{fs, io, path::Path};
 
-pub fn load_from_file<P>(sys: &mut System, file_name: P) -> io::Result<()>
+pub fn load_image_from_file<P>(sys: &mut System, file_name: P, addr: u64) -> io::Result<()>
 where
     P: AsRef<Path>,
 {
     let image = fs::read(file_name)?;
     let len = image.len();
+    let addr = addr as usize;
+    let end = addr + len;
     log_with_pc(
         sys,
         &format!("{} with {len} bytes", "Load image".blue()),
         false,
     );
-    sys.mem.ram.as_u8_mut()[0..len].copy_from_slice(&image);
+    sys.mem.ram.as_u8_mut()[addr..end].copy_from_slice(&image);
+    Ok(())
+}
+
+pub fn load_dtb_from_file<P>(sys: &mut System, file_name: P) -> io::Result<()>
+where
+    P: AsRef<Path>,
+{
+    let mut image = fs::read(file_name)?;
+    let len = image.len();
+    log_with_pc(
+        sys,
+        &format!("{} with {len} bytes", "Load dtb".blue()),
+        false,
+    );
+    while image.len() % 4 != 0 {
+        image.push(0);
+    }
+    sys.mem.dtb = Dtb::new(image);
     Ok(())
 }
 
@@ -62,6 +86,12 @@ pub fn run_until_ecall(sys: &mut System) {
 
 pub fn run_for(sys: &mut System, repeat: usize) {
     for _ in 0..repeat {
+        let _ = sys.step();
+    }
+}
+
+pub fn run_forever(sys: &mut System) {
+    loop {
         let _ = sys.step();
     }
 }

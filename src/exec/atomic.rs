@@ -371,10 +371,10 @@ mod tests {
     fn test_lr_fault() {
         let mut sys = System::new();
 
-        *sys.reg_mut(&Reg::new(1)) = 0x100000;
+        *sys.reg_mut(&Reg::new(1)) = 0x80000000u32 as i32;
         assert_eq!(
             load_reserved(&mut sys, 2, 1),
-            Err(Trap::from_exception(LoadAccessFault, 0x100000))
+            Err(Trap::from_exception(LoadAccessFault, 0x80000000))
         );
 
         *sys.reg_mut(&Reg::new(1)) = -1;
@@ -411,10 +411,10 @@ mod tests {
     fn test_sc_fault() {
         let mut sys = System::new();
 
-        *sys.reg_mut(&Reg::new(1)) = 0x100000;
+        *sys.reg_mut(&Reg::new(1)) = 0x80000000u32 as i32;
         assert_eq!(
             store_conditional(&mut sys, 4, 1, 2),
-            Err(Trap::from_exception(StoreAccessFault, 0x100000))
+            Err(Trap::from_exception(StoreAccessFault, 0x80000000u32))
         );
 
         *sys.reg_mut(&Reg::new(1)) = -1;
@@ -503,7 +503,7 @@ mod tests {
     fn test_amo_fault() {
         let mut sys = System::new();
         sys.mem.write_u32(0, 0, store_attr()).unwrap();
-        *sys.state.reg_mut(&Reg::new(1)) = 0x100000;
+        *sys.state.reg_mut(&Reg::new(1)) = 0x80000000u32 as i32;
         *sys.state.reg_mut(&Reg::new(2)) = -1;
 
         assert_amo_failed(&mut sys, 3, 1, 2, AmoFunct::Swap, StoreAccessFault);

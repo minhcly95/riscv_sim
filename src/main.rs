@@ -13,9 +13,17 @@ fn main() {
                 eprintln!("Invalid binary file: {}", f.display());
                 process::exit(1);
             }
+            ConfigError::InvalidDtb(f) => {
+                eprintln!("Invalid dtb file: {}", f.display());
+                process::exit(2);
+            }
+            ConfigError::InvalidKernel(f) => {
+                eprintln!("Invalid kernel file: {}", f.display());
+                process::exit(3);
+            }
         },
     };
 
     let mut sys = System::from_config(cfg);
-    run_until_ecall(&mut sys);
+    run_forever(&mut sys);
 }

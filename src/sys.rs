@@ -1,14 +1,19 @@
 use std::u64;
 
 use crate::{
-    decode::decode, exec::execute, instr::reg::Reg, proc::*, run::load_from_file, translate::*,
-    trap::TrapCause, Config, Exception, Result, Result32, Trap,
+    decode::decode,
+    exec::execute,
+    instr::reg::Reg,
+    proc::*,
+    run::{load_dtb_from_file, load_image_from_file},
+    translate::*,
+    trap::TrapCause,
+    Config, Exception, Result, Result32, Trap,
 };
 use colored::*;
 
 pub mod control;
 pub mod mem_map;
-pub mod ram;
 pub mod state;
 
 use control::*;
@@ -32,6 +37,8 @@ impl System {
     pub fn from_config(cfg: Config) -> System {
         let size = cfg.size.as_u64();
         let binary = cfg.binary.clone();
+        let dtb = cfg.dtb.clone();
+        let kernel = cfg.kernel.clone();
 
         let mut sys = System {
             cfg,
@@ -41,14 +48,30 @@ impl System {
             code: 0,
         };
 
+        // Adjust the ram base
         let ram_base = sys.cfg.base as u64;
-        let ram_end = ram_base + size;
-        sys.mem.ram_range = ram_base..ram_end;
+        sys.mem.ram_base = ram_base;
         *sys.pc_mut() = sys.cfg.base;
 
+        // Load binary file to ram
         if let Some(path) = binary {
-            load_from_file(&mut sys, path).unwrap();
+            load_image_from_file(&mut sys, path, 0).unwrap();
         }
+
+        // Load device tree blob to rom
+        if let Some(path) = dtb {
+            load_dtb_from_file(&mut sys, path).unwrap();
+        }
+
+        // Load kernel file to ram at 0x00400000
+        if let Some(path) = kernel {
+            load_image_from_file(&mut sys, path, 0x00400000).unwrap();
+        }
+
+        // Initialize a0 to hartid (0) and a1 to dtb_base
+        *sys.reg_mut(&Reg::new(10)) = 0;
+        *sys.reg_mut(&Reg::new(11)) = sys.mem.dtb_base as i32;
+
         sys
     }
 

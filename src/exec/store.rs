@@ -112,13 +112,13 @@ mod tests {
     fn test_execute_store_fault() {
         let mut sys = System::new();
 
-        assert_store_failed(&mut sys, 0, 1, 0x100000, StoreFunct::B, StoreAccessFault);
+        assert_store_failed(&mut sys, 0, 1, 0x8000000u32 as i32, StoreFunct::B, StoreAccessFault);
         assert_store_failed(&mut sys, 0, 1, -4, StoreFunct::B, StoreAccessFault);
 
-        assert_store_failed(&mut sys, 0, 1, 0x100000, StoreFunct::H, StoreAccessFault);
+        assert_store_failed(&mut sys, 0, 1, 0x8000000u32 as i32, StoreFunct::H, StoreAccessFault);
         assert_store_failed(&mut sys, 0, 1, -4, StoreFunct::H, StoreAccessFault);
 
-        assert_store_failed(&mut sys, 0, 1, 0x100000, StoreFunct::W, StoreAccessFault);
+        assert_store_failed(&mut sys, 0, 1, 0x8000000u32 as i32, StoreFunct::W, StoreAccessFault);
         assert_store_failed(&mut sys, 0, 1, -4, StoreFunct::W, StoreAccessFault);
     }
 

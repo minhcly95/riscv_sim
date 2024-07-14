@@ -7,6 +7,8 @@ fn test_with_ref(binary_file: &str, ref_file: &str, num_words: usize, is_hex: bo
         binary: Some(PathBuf::from_str(binary_file).unwrap()),
         size: ByteSize::mib(1),
         base: 0,
+        dtb: None,
+        kernel: None,
         verbose: true,
     };
 

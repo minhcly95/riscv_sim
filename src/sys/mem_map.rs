@@ -1,9 +1,16 @@
-use super::ram::Ram;
 use crate::{
     Exception::{self, *},
     Result16E, Result32E, Result8E, ResultE,
 };
-use std::ops::Range;
+use core::panic;
+
+pub mod dtb;
+pub mod ram;
+pub mod uart;
+
+use dtb::*;
+use ram::*;
+use uart::*;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum AccessType {
@@ -30,69 +37,118 @@ pub struct AccessAttr {
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum MemTarget {
     Ram(u64),
+    Uart(u64),
+    Dtb(u64),
 }
 
 #[derive(Debug)]
 pub struct MemMap {
     pub ram: Ram,
-    pub ram_range: Range<u64>,
+    pub uart: Uart,
+    pub dtb: Dtb,
+    pub ram_base: u64,
+    pub uart_base: u64,
+    pub dtb_base: u64,
     reserved_word: Option<u64>, // For atomic lr/sc
 }
 
 impl MemMap {
     pub fn new(ram_size: u64) -> MemMap {
         let ram = Ram::new(ram_size as usize);
+        let uart = Uart::new();
+        let dtb = Dtb::new(vec![]);
         MemMap {
             ram,
-            ram_range: Range {
-                start: 0,
-                end: ram_size,
-            },
+            uart,
+            dtb,
+            ram_base: 0,
+            uart_base: 0xc000_0000,
+            dtb_base: 0xf000_0000,
             reserved_word: None,
         }
     }
 
-    pub fn check_and_translate(&self, addr: u64, attr: AccessAttr) -> Result<MemTarget, Exception> {
-        if !self.ram_range.contains(&addr) {
-            return Err(access_fault(attr.atype));
-        }
+    fn check_misaligned(&self, addr: u64, attr: AccessAttr) -> Result<(), Exception> {
         match attr.width {
             AccessWidth::HalfWord => {
                 if addr & 0b1 != 0 {
-                    return Err(misaligned_fault(attr.atype));
+                    Err(misaligned_fault(attr.atype))?
                 }
+                Ok(())
             }
             AccessWidth::Word => {
                 if addr & 0b11 != 0 {
-                    return Err(misaligned_fault(attr.atype));
+                    Err(misaligned_fault(attr.atype))?
                 }
+                Ok(())
             }
-            _ => (),
+            _ => Ok(()),
         }
-        Ok(MemTarget::Ram(addr - self.ram_range.start))
+    }
+
+    pub fn check_and_translate(&self, addr: u64, attr: AccessAttr) -> Result<MemTarget, Exception> {
+        let ram_range = self.ram_base..(self.ram_base + self.ram.size());
+        let uart_range = self.uart_base..(self.uart_base + 8);
+        let dtb_range = self.dtb_base..(self.dtb_base + self.dtb.size());
+
+        if ram_range.contains(&addr) {
+            // RAM
+            self.check_misaligned(addr, attr)?;
+            Ok(MemTarget::Ram(addr - self.ram_base))
+        } else if uart_range.contains(&addr) {
+            // UART (byte-access-only)
+            if attr.width != AccessWidth::Byte
+                || attr.lrsc
+                || attr.amo
+                || attr.atype == AccessType::Instr
+            {
+                return Err(access_fault(attr.atype));
+            }
+            Ok(MemTarget::Uart(addr - self.uart_base))
+        } else if dtb_range.contains(&addr) {
+            // Device tree (read-only)
+            if attr.atype != AccessType::Load || attr.lrsc || attr.amo {
+                return Err(access_fault(attr.atype));
+            }
+            self.check_misaligned(addr, attr)?;
+            Ok(MemTarget::Dtb(addr - self.dtb_base))
+        } else {
+            Err(access_fault(attr.atype))
+        }
     }
 
     // Read
-    pub fn read_u8(&self, addr: u64, attr: AccessAttr) -> Result8E {
+    pub fn read_u8(&mut self, addr: u64, attr: AccessAttr) -> Result8E {
         match self.check_and_translate(addr, attr)? {
             MemTarget::Ram(ram_addr) => {
                 let buf = self.ram.as_u8();
                 Ok(buf[ram_addr as usize])
             }
+            MemTarget::Uart(uart_addr) => Ok(self.uart.read(uart_addr)),
+            MemTarget::Dtb(dtb_addr) => {
+                let buf = self.dtb.as_u8();
+                Ok(buf[dtb_addr as usize])
+            }
         }
     }
 
-    pub fn read_u16(&self, addr: u64, attr: AccessAttr) -> Result16E {
+    pub fn read_u16(&mut self, addr: u64, attr: AccessAttr) -> Result16E {
         match self.check_and_translate(addr, attr)? {
             MemTarget::Ram(ram_addr) => {
                 let ram_addr = ram_addr as usize;
                 let buf = self.ram.as_u8();
                 Ok(u16::from_le_bytes([buf[ram_addr], buf[ram_addr + 1]]))
             }
+            MemTarget::Uart(_) => panic!("cannot read a half-word from Uart"),
+            MemTarget::Dtb(dtb_addr) => {
+                let dtb_addr = dtb_addr as usize;
+                let buf = self.dtb.as_u8();
+                Ok(u16::from_le_bytes([buf[dtb_addr], buf[dtb_addr + 1]]))
+            }
         }
     }
 
-    pub fn read_u32(&self, addr: u64, attr: AccessAttr) -> Result32E {
+    pub fn read_u32(&mut self, addr: u64, attr: AccessAttr) -> Result32E {
         match self.check_and_translate(addr, attr)? {
             MemTarget::Ram(ram_addr) => {
                 let ram_addr = ram_addr as usize;
@@ -102,6 +158,17 @@ impl MemMap {
                     buf[ram_addr + 1],
                     buf[ram_addr + 2],
                     buf[ram_addr + 3],
+                ]))
+            }
+            MemTarget::Uart(_) => panic!("cannot read a word from Uart"),
+            MemTarget::Dtb(dtb_addr) => {
+                let dtb_addr = dtb_addr as usize;
+                let buf = self.dtb.as_u8();
+                Ok(u32::from_le_bytes([
+                    buf[dtb_addr],
+                    buf[dtb_addr + 1],
+                    buf[dtb_addr + 2],
+                    buf[dtb_addr + 3],
                 ]))
             }
         }
@@ -116,6 +183,8 @@ impl MemMap {
                 buf[ram_addr as usize] = val;
                 Ok(())
             }
+            MemTarget::Uart(uart_addr) => Ok(self.uart.write(uart_addr, val)),
+            MemTarget::Dtb(_) => panic!("cannot write to Dtb"),
         }
     }
 
@@ -130,6 +199,8 @@ impl MemMap {
                 buf[ram_addr + 1] = bytes[1];
                 Ok(())
             }
+            MemTarget::Uart(_) => panic!("cannot write a half-word to Uart"),
+            MemTarget::Dtb(_) => panic!("cannot write to Dtb"),
         }
     }
 
@@ -146,6 +217,8 @@ impl MemMap {
                 buf[ram_addr + 3] = bytes[3];
                 Ok(())
             }
+            MemTarget::Uart(_) => panic!("cannot write a word to Uart"),
+            MemTarget::Dtb(_) => panic!("cannot write to Dtb"),
         }
     }
 
@@ -305,7 +378,7 @@ mod tests {
     #[test]
     #[rustfmt::skip]
     fn test_read_fault() {
-        let mem = MemMap::new(MEM_SIZE); // 1 kB
+        let mut mem = MemMap::new(MEM_SIZE); // 1 kB
 
         assert_eq!(mem.read_u8(MEM_SIZE, load_attr(Byte)).unwrap_err(), LoadAccessFault);
         assert_eq!(mem.read_u8(0xffff_ffff, load_attr(Byte)).unwrap_err(), LoadAccessFault);
@@ -320,7 +393,7 @@ mod tests {
     #[test]
     #[rustfmt::skip]
     fn test_read_misaligned() {
-        let mem = MemMap::new(MEM_SIZE); // 1 kB
+        let mut mem = MemMap::new(MEM_SIZE); // 1 kB
 
         assert_eq!(mem.read_u16(1, load_attr(HalfWord)).unwrap_err(), LoadAddrMisaligned);
         assert_eq!(mem.read_u16(3, load_attr(HalfWord)).unwrap_err(), LoadAddrMisaligned);
@@ -375,7 +448,7 @@ mod tests {
     #[test]
     #[rustfmt::skip]
     fn test_exec_fault() {
-        let mem = MemMap::new(MEM_SIZE); // 1 kB
+        let mut mem = MemMap::new(MEM_SIZE); // 1 kB
 
         assert_eq!(mem.read_u32(MEM_SIZE, instr_attr()).unwrap_err(), InstrAccessFault);
         assert_eq!(mem.read_u32(0xffff_ffff, instr_attr()).unwrap_err(), InstrAccessFault);
@@ -384,7 +457,7 @@ mod tests {
     #[test]
     #[rustfmt::skip]
     fn test_exec_misaligned() {
-        let mem = MemMap::new(MEM_SIZE); // 1 kB
+        let mut mem = MemMap::new(MEM_SIZE); // 1 kB
 
         assert_eq!(mem.read_u32(1, instr_attr()).unwrap_err(), InstrAddrMisaligned);
         assert_eq!(mem.read_u32(2, instr_attr()).unwrap_err(), InstrAddrMisaligned);

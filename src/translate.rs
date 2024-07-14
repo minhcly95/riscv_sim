@@ -298,6 +298,8 @@ mod tests {
             binary: None,
             size: ByteSize::b(0x10000), // 16kB
             base: RAM_BASE as u32,
+            dtb: None,
+            kernel: None,
             verbose: true,
         });
 

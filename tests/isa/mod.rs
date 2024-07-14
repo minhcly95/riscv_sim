@@ -7,6 +7,8 @@ fn run_test(binary_file: &str) {
         binary: Some(PathBuf::from_str(binary_file).unwrap()),
         size: ByteSize::mib(1),
         base: 0x8000_0000,
+        dtb: None,
+        kernel: None,
         verbose: true,
     };
 
