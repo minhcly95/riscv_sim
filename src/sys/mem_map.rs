@@ -6,10 +6,12 @@ use core::panic;
 
 pub mod dtb;
 pub mod ram;
+pub mod timer;
 pub mod uart;
 
 use dtb::*;
 use ram::*;
+use timer::*;
 use uart::*;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -39,6 +41,8 @@ pub enum MemTarget {
     Ram(u64),
     Uart(u64),
     Dtb(u64),
+    Time(u64),
+    TimeCmp(u64),
 }
 
 #[derive(Debug)]
@@ -46,9 +50,12 @@ pub struct MemMap {
     pub ram: Ram,
     pub uart: Uart,
     pub dtb: Dtb,
+    pub timer: Timer,
     pub ram_base: u64,
     pub uart_base: u64,
     pub dtb_base: u64,
+    pub time_base: u64,
+    pub timecmp_base: u64,
     reserved_word: Option<u64>, // For atomic lr/sc
 }
 
@@ -57,32 +64,18 @@ impl MemMap {
         let ram = Ram::new(ram_size as usize);
         let uart = Uart::new();
         let dtb = Dtb::new(vec![]);
+        let timer = Timer::new();
         MemMap {
             ram,
             uart,
             dtb,
+            timer,
             ram_base: 0,
             uart_base: 0xc000_0000,
             dtb_base: 0xf000_0000,
+            time_base: 0xd000_0000,
+            timecmp_base: 0xd000_1000,
             reserved_word: None,
-        }
-    }
-
-    fn check_misaligned(&self, addr: u64, attr: AccessAttr) -> Result<(), Exception> {
-        match attr.width {
-            AccessWidth::HalfWord => {
-                if addr & 0b1 != 0 {
-                    Err(misaligned_fault(attr.atype))?
-                }
-                Ok(())
-            }
-            AccessWidth::Word => {
-                if addr & 0b11 != 0 {
-                    Err(misaligned_fault(attr.atype))?
-                }
-                Ok(())
-            }
-            _ => Ok(()),
         }
     }
 
@@ -90,28 +83,41 @@ impl MemMap {
         let ram_range = self.ram_base..(self.ram_base + self.ram.size());
         let uart_range = self.uart_base..(self.uart_base + 8);
         let dtb_range = self.dtb_base..(self.dtb_base + self.dtb.size());
+        let time_range = self.time_base..(self.time_base + 8);
+        let timecmp_range = self.timecmp_base..(self.timecmp_base + 8);
 
         if ram_range.contains(&addr) {
             // RAM
-            self.check_misaligned(addr, attr)?;
+            check_misaligned(addr, attr)?;
             Ok(MemTarget::Ram(addr - self.ram_base))
         } else if uart_range.contains(&addr) {
             // UART (byte-access-only)
-            if attr.width != AccessWidth::Byte
-                || attr.lrsc
-                || attr.amo
-                || attr.atype == AccessType::Instr
-            {
-                return Err(access_fault(attr.atype));
-            }
+            check_only_width(attr, AccessWidth::Byte)?;
+            check_no_lrsc(attr)?;
+            check_no_amo(attr)?;
+            check_read_write(attr)?;
             Ok(MemTarget::Uart(addr - self.uart_base))
         } else if dtb_range.contains(&addr) {
             // Device tree (read-only)
-            if attr.atype != AccessType::Load || attr.lrsc || attr.amo {
-                return Err(access_fault(attr.atype));
-            }
-            self.check_misaligned(addr, attr)?;
+            check_no_lrsc(attr)?;
+            check_no_amo(attr)?;
+            check_read_only(attr)?;
+            check_misaligned(addr, attr)?;
             Ok(MemTarget::Dtb(addr - self.dtb_base))
+        } else if time_range.contains(&addr) {
+            // Time
+            check_only_width(attr, AccessWidth::Word)?;
+            check_no_lrsc(attr)?;
+            check_no_amo(attr)?;
+            check_read_write(attr)?;
+            Ok(MemTarget::Time(addr - self.time_base))
+        } else if timecmp_range.contains(&addr) {
+            // TimeCmp
+            check_only_width(attr, AccessWidth::Word)?;
+            check_no_lrsc(attr)?;
+            check_no_amo(attr)?;
+            check_read_write(attr)?;
+            Ok(MemTarget::TimeCmp(addr - self.timecmp_base))
         } else {
             Err(access_fault(attr.atype))
         }
@@ -129,6 +135,8 @@ impl MemMap {
                 let buf = self.dtb.as_u8();
                 Ok(buf[dtb_addr as usize])
             }
+            MemTarget::Time(_) => panic!("cannot read a byte from Timer"),
+            MemTarget::TimeCmp(_) => panic!("cannot read a byte from Timer"),
         }
     }
 
@@ -145,6 +153,8 @@ impl MemMap {
                 let buf = self.dtb.as_u8();
                 Ok(u16::from_le_bytes([buf[dtb_addr], buf[dtb_addr + 1]]))
             }
+            MemTarget::Time(_) => panic!("cannot read a half-word from Timer"),
+            MemTarget::TimeCmp(_) => panic!("cannot read a half-word from Timer"),
         }
     }
 
@@ -171,6 +181,8 @@ impl MemMap {
                     buf[dtb_addr + 3],
                 ]))
             }
+            MemTarget::Time(time_addr) => Ok(self.timer.read_time(time_addr)),
+            MemTarget::TimeCmp(timecmp_addr) => Ok(self.timer.read_timecmp(timecmp_addr)),
         }
     }
 
@@ -185,6 +197,8 @@ impl MemMap {
             }
             MemTarget::Uart(uart_addr) => Ok(self.uart.write(uart_addr, val)),
             MemTarget::Dtb(_) => panic!("cannot write to Dtb"),
+            MemTarget::Time(_) => panic!("cannot write a byte to Timer"),
+            MemTarget::TimeCmp(_) => panic!("cannot write a byte to Timer"),
         }
     }
 
@@ -201,6 +215,8 @@ impl MemMap {
             }
             MemTarget::Uart(_) => panic!("cannot write a half-word to Uart"),
             MemTarget::Dtb(_) => panic!("cannot write to Dtb"),
+            MemTarget::Time(_) => panic!("cannot write a half-word to Timer"),
+            MemTarget::TimeCmp(_) => panic!("cannot write a half-word to Timer"),
         }
     }
 
@@ -219,6 +235,8 @@ impl MemMap {
             }
             MemTarget::Uart(_) => panic!("cannot write a word to Uart"),
             MemTarget::Dtb(_) => panic!("cannot write to Dtb"),
+            MemTarget::Time(time_addr) => Ok(self.timer.write_time(time_addr, val)),
+            MemTarget::TimeCmp(timecmp_addr) => Ok(self.timer.write_timecmp(timecmp_addr, val)),
         }
     }
 
@@ -265,6 +283,64 @@ pub fn page_fault(access_type: AccessType) -> Exception {
         AccessType::Instr => InstrPageFault,
         AccessType::Load => LoadPageFault,
         AccessType::Store => StorePageFault,
+    }
+}
+
+fn check_misaligned(addr: u64, attr: AccessAttr) -> Result<(), Exception> {
+    match attr.width {
+        AccessWidth::HalfWord => {
+            if addr & 0b1 != 0 {
+                Err(misaligned_fault(attr.atype))?
+            }
+            Ok(())
+        }
+        AccessWidth::Word => {
+            if addr & 0b11 != 0 {
+                Err(misaligned_fault(attr.atype))?
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
+
+fn check_no_lrsc(attr: AccessAttr) -> Result<(), Exception> {
+    if attr.lrsc {
+        Err(access_fault(attr.atype))
+    } else {
+        Ok(())
+    }
+}
+
+fn check_no_amo(attr: AccessAttr) -> Result<(), Exception> {
+    if attr.amo {
+        Err(access_fault(attr.atype))
+    } else {
+        Ok(())
+    }
+}
+
+fn check_read_only(attr: AccessAttr) -> Result<(), Exception> {
+    if attr.atype != AccessType::Load {
+        Err(access_fault(attr.atype))
+    } else {
+        Ok(())
+    }
+}
+
+fn check_read_write(attr: AccessAttr) -> Result<(), Exception> {
+    if attr.atype == AccessType::Instr {
+        Err(access_fault(attr.atype))
+    } else {
+        Ok(())
+    }
+}
+
+fn check_only_width(attr: AccessAttr, width: AccessWidth) -> Result<(), Exception> {
+    if attr.width != width {
+        Err(access_fault(attr.atype))
+    } else {
+        Ok(())
     }
 }
 

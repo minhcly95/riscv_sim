@@ -116,7 +116,8 @@ pub fn log_with_pc(sys: &System, str: &str, debug: bool) {
 }
 
 fn fetch_decode_exec(sys: &mut System) -> Result {
-    // Check interrupt
+    // Update and check interrupt
+    update_interrupt(sys);
     check_interrupt(sys)?;
 
     // Fetch
@@ -165,4 +166,6 @@ fn retire(sys: &mut System, res: Result) {
     if !sys.ctrl.mcycle_inhibit {
         sys.ctrl.mcycle = sys.ctrl.mcycle.wrapping_add(1);
     }
+    // Tick the timer
+    sys.mem.timer.time = sys.mem.timer.time.wrapping_add(1);
 }

@@ -62,7 +62,7 @@ fn read_time(sys: &System) -> Result32 {
     if sys.ctrl.privilege == MPriv::M
         || sys.ctrl.mtime_en && (sys.ctrl.privilege == MPriv::S || sys.ctrl.stime_en)
     {
-        Ok(read_mcycle(sys))
+        Ok(sys.mem.timer.read_time(0))
     } else {
         Err(make_illegal(sys))
     }
@@ -73,7 +73,7 @@ fn read_timeh(sys: &System) -> Result32 {
     if sys.ctrl.privilege == MPriv::M
         || sys.ctrl.mtime_en && (sys.ctrl.privilege == MPriv::S || sys.ctrl.stime_en)
     {
-        Ok(read_mcycleh(sys))
+        Ok(sys.mem.timer.read_time(4))
     } else {
         Err(make_illegal(sys))
     }

@@ -1,6 +1,6 @@
 use console::Term;
 use core::panic;
-use std::{fmt::Debug, io::Write};
+use std::{fmt::Debug, io::{stdout, Write}};
 
 // This is an emulator for the 8250 serial chip with:
 // - Infinite-length FIFOs (never full)
@@ -71,11 +71,14 @@ impl Uart {
             7 => self.scratch = val,      // SPR: Scratch pad register
             2 | 5 | 6 => (),
             _ => panic!("invalid addr for Uart (addr = {addr})"),
-        }
+        };
+        println!("Write Uart[{addr}] = 0x{val:02x}");
     }
 
     pub fn read(&mut self, addr: u64) -> u8 {
-        match addr {
+        print!("Read Uart[{addr}]... ");
+        stdout().flush().unwrap();
+        let res = match addr {
             0 => {
                 if !self.is_dlab_set() {
                     // THR: Tranmission holding register
@@ -103,6 +106,8 @@ impl Uart {
             6 => 0,                  // MSR: Modem status register
             7 => self.scratch,       // SPR: Scratch pad register
             _ => panic!("invalid addr for Uart (addr = {addr})"),
-        }
+        };
+        println!("Read Uart[{addr}] = 0x{res:02x}");
+        res
     }
 }

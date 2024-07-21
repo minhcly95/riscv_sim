@@ -14,6 +14,11 @@ const INTERRUPT_ORDER: [Interrupt; 6] = [
 ];
 
 // ------------ Interrupt condition -------------
+pub fn update_interrupt(sys: &mut System) {
+    // Update timer interrupt
+    sys.ctrl.ip.set(&Interrupt::MTimer, sys.mem.timer.is_interrupt_set());
+}
+
 pub fn check_interrupt(sys: &mut System) -> Result {
     let cond_m = int_cond_m(sys);
     let cond_s = int_cond_s(sys);
